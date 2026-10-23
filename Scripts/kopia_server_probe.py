@@ -168,7 +168,9 @@ class Server:
         # Kopia 0.23.1 disables the REST UI API with --no-ui; --ui does not open a browser.
         arguments = self.spike.base + [
             "server", "start", "--cache-directory=" + str(self.spike.root / "cache"),
-            "--address=127.0.0.1:0", "--tls-generate-cert", "--tls-generate-rsa-key-size=2048",
+            # Kopia 0.23.1: the default 3650-day certificate fails native macOS SSL policy.
+            "--address=127.0.0.1:0", "--tls-generate-cert", "--tls-generate-cert-valid-days=365",
+            "--tls-generate-rsa-key-size=2048",
             "--tls-print-server-cert", "--random-password", "--random-server-control-password",
             "--server-username=mackopia", "--shutdown-on-stdin", "--ui" if self.ui else "--no-ui", "--no-grpc",
             "--control-api", "--no-check-for-updates", "--no-async-repo-connect",

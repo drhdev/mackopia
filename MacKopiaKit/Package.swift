@@ -28,6 +28,7 @@ let package = Package(
         .target(name: "TestSupport", dependencies: ["BackupDomain"]),
         .testTarget(
             name: "KopiaContractTests",
+            dependencies: ["KopiaServer"],
             path: "Tests",
             exclude: ["FoundationTests"],
             sources: ["KopiaContractTests"],

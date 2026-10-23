@@ -3,6 +3,7 @@ import Foundation
 import Testing
 
 @testable import KopiaCLI
+@testable import KopiaServer
 
 extension Tag {
     @Tag static var integration: Self
@@ -23,6 +24,66 @@ private enum NativeKopiaFixture {
         if: FileManager.default.isExecutableFile(atPath: NativeKopiaFixture.binary.path)
             || ProcessInfo.processInfo.environment["MACKOPIA_REQUIRE_KOPIA_INTEGRATION"] == "1"))
 struct KopiaProcessIntegrationTests {
+    @Test func controlShutdownStopsRealServerWithoutClosingInput() async throws {
+        let root = try KopiaProcessTests().temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let server = KopiaServerProcess()
+        let configuration = try KopiaServerConfiguration(
+            executable: NativeKopiaFixture.binary, repositoryID: UUID(), homeDirectory: root,
+            temporaryDirectory: root, user: "test-user", backupPassword: UUID().uuidString)
+        let handshake = try await server.start(configuration: configuration)
+        let client = KopiaServerClient(handshake: handshake)
+        do {
+            try await client.shutdownServer()
+            let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+            while await server.isRunning, ContinuousClock.now < deadline {
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            #expect(await server.isRunning == false)
+        } catch {
+            await client.close()
+            try? await server.stop()
+            throw error
+        }
+        await client.close()
+        try await server.stop()
+    }
+
+    @Test func parsesRealServerHandshakeAndStopsOnInputEOF() async throws {
+        let root = try KopiaProcessTests().temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let server = KopiaServerProcess()
+        let configuration = try KopiaServerConfiguration(
+            executable: NativeKopiaFixture.binary, repositoryID: UUID(), homeDirectory: root,
+            temporaryDirectory: root, user: "test-user", backupPassword: UUID().uuidString)
+        let handshake = try await server.start(configuration: configuration)
+        #expect(handshake.address.host == "127.0.0.1")
+        #expect(handshake.fingerprint.count == 32)
+        let client = KopiaServerClient(handshake: handshake)
+        do {
+            async let first = client.repositoryStatus()
+            async let second = client.repositoryStatus()
+            let statuses = try await [first, second]
+            #expect(statuses.allSatisfy { $0.connected == false })
+            var wrongParser = KopiaServerHandshakeParser()
+            let parsed = try wrongParser.consume(
+                KopiaServerHandshakeTests().transcript(address: handshake.address.absoluteString))
+            let wrongHandshake = try #require(parsed)
+            let rejectedClient = KopiaServerClient(handshake: wrongHandshake)
+            await #expect(throws: KopiaServerClientError.transport) { try await rejectedClient.repositoryStatus() }
+            await rejectedClient.close()
+            await client.close()
+            await #expect(throws: KopiaServerClientError.closed) { try await client.repositoryStatus() }
+        } catch {
+            await client.close()
+            try? await server.stop()
+            throw error
+        }
+        try await server.stop()
+        try await server.stop()
+
+    }
+
     @Test func versionMatchesRepositoryPin() async throws {
         let root = try KopiaProcessTests().temporaryRoot()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -35,12 +96,21 @@ struct KopiaProcessIntegrationTests {
         #expect(result.exitCode == 0)
         let version = try #require(String(decoding: result.standardOutput, as: UTF8.self).split(separator: " ").first)
         #expect(String(version) == pin.version)
+        let paths = try KopiaRepositoryPaths(repositoryID: UUID(), homeDirectory: root)
+        let verifier = try KopiaBinaryVerifier(
+            executable: NativeKopiaFixture.binary, paths: paths, temporaryDirectory: root, expectedVersion: pin.version)
+        try await verifier.verify()
+        let mismatch = try KopiaBinaryVerifier(
+            executable: NativeKopiaFixture.binary, paths: paths, temporaryDirectory: root, expectedVersion: "0.0.0")
+        await #expect(throws: KopiaBinaryVerificationError.versionMismatch) { try await mismatch.verify() }
+        #expect(!FileManager.default.fileExists(atPath: paths.configurationDirectory.path))
     }
 
     @Test func createThenReadStatusAndOwnerThroughNativeRunner() async throws {
         let root = try KopiaProcessTests().temporaryRoot()
         defer { try? FileManager.default.removeItem(at: root) }
-        let paths = try KopiaRepositoryPaths(repositoryID: UUID(), homeDirectory: root)
+        let repositoryID = UUID()
+        let paths = try KopiaRepositoryPaths(repositoryID: repositoryID, homeDirectory: root)
         let state = paths.configurationDirectory
         try FileManager.default.createDirectory(
             at: state, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
@@ -69,6 +139,61 @@ struct KopiaProcessIntegrationTests {
         let maintenance = try await commands.run(.maintenanceInfo, context: context)
         let owner = try #require(JSONSerialization.jsonObject(with: maintenance) as? [String: Any])
         #expect(owner["owner"] as? String == "test-user@test-host")
+        let source = root.appendingPathComponent("Quelle ü + & ? # %2F")
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: false)
+        try Data("native source fixture".utf8).write(to: source.appendingPathComponent("hello.txt"))
+        let snapshotRequest = KopiaProcessRequest(
+            executable: NativeKopiaFixture.binary,
+            arguments: Array(statusRequest.arguments.dropLast(3)) + ["snapshot", "create", source.path, "--json"],
+            environment: statusRequest.environment)
+        #expect(try await process.run(snapshotRequest).exitCode == 0)
+        let server = KopiaServerProcess()
+        let serverConfiguration = try KopiaServerConfiguration(
+            executable: NativeKopiaFixture.binary, repositoryID: repositoryID, homeDirectory: root,
+            temporaryDirectory: root, user: "test-user", backupPassword: context.backupPassword)
+        let handshake = try await server.start(configuration: serverConfiguration)
+        let client = KopiaServerClient(handshake: handshake)
+        do {
+            let serverStatus = try await client.repositoryStatus()
+            #expect(serverStatus.connected == true)
+            #expect(serverStatus.storage == "filesystem")
+            async let readSources = client.sources()
+            async let readTasks = client.tasks()
+            let (sources, tasks) = try await (readSources, readTasks)
+            #expect(sources.localUsername == "test-user")
+            #expect(sources.localHost == "test-host")
+            let listedSource = try #require(sources.sources?.first { $0.source?.path == source.path })
+            #expect(listedSource.status == "IDLE")
+            #expect(listedSource.lastSnapshot?.stats?.totalSize == 21)
+            #expect(listedSource.lastSnapshot?.incomplete == nil)
+            let selector = try KopiaSnapshotSource(userName: "test-user", host: "test-host", path: source.path)
+            let snapshotList = try await client.snapshots(source: selector)
+            let snapshot = try #require(snapshotList.snapshots?.first)
+            #expect(snapshotList.snapshots?.count == 1)
+            #expect(snapshot.summary?.size == 21)
+            let rootID = try #require(snapshot.rootID)
+            let directory = try await client.directory(id: rootID)
+            let entry = try #require(directory.entries?.first)
+            #expect(directory.entries?.count == 1)
+            #expect(entry.name == "hello.txt")
+            #expect(entry.type == "f")
+            #expect(entry.size == 21)
+            let fileID = try #require(entry.obj)
+            await #expect(throws: KopiaServerClientError.response) { try await client.directory(id: fileID) }
+            let opening = try #require(tasks.tasks?.first { $0.kind == "Repository" })
+            let taskID = try #require(opening.id)
+            let detail = try await client.task(id: taskID)
+            #expect(detail.id == taskID)
+            #expect(detail.kind == "Repository")
+            #expect(detail.status == "SUCCESS")
+
+        } catch {
+            await client.close()
+            try? await server.stop()
+            throw error
+        }
+        await client.close()
+        try await server.stop()
         let config = try Data(contentsOf: state.appendingPathComponent("repository.config"))
         #expect(config.range(of: Data(context.backupPassword.utf8)) == nil)
     }
@@ -112,7 +237,8 @@ struct KopiaProcessIntegrationTests {
         let readinessJSON = try #require(JSONSerialization.jsonObject(with: response) as? [String: Int])
         let port = try #require(readinessJSON["port"])
         let endpoint = "http://127.0.0.1:\(port)"
-        let paths = try KopiaRepositoryPaths(repositoryID: UUID(), homeDirectory: root)
+        let repositoryID = UUID()
+        let paths = try KopiaRepositoryPaths(repositoryID: repositoryID, homeDirectory: root)
         try FileManager.default.createDirectory(
             at: paths.configurationDirectory, withIntermediateDirectories: true,
             attributes: [.posixPermissions: 0o700])
@@ -154,6 +280,26 @@ struct KopiaProcessIntegrationTests {
                 status.range(of: Data($0.utf8)) != nil
             }
             #expect(!containsCredential)
+        }
+        for _ in 0..<2 {
+            let server = KopiaServerProcess()
+            let serverConfiguration = try KopiaServerConfiguration(
+                executable: NativeKopiaFixture.binary, repositoryID: repositoryID, homeDirectory: root,
+                temporaryDirectory: root, user: "test-user", backupPassword: context.backupPassword,
+                configuration: .webDAV(configuration))
+            let handshake = try await server.start(configuration: serverConfiguration)
+            let client = KopiaServerClient(handshake: handshake)
+            do {
+                let status = try await client.repositoryStatus()
+                #expect(status.connected == true)
+                #expect(status.storage == "webdav")
+            } catch {
+                await client.close()
+                try? await server.stop()
+                throw error
+            }
+            await client.close()
+            try await server.stop()
         }
         let entries = try FileManager.default.contentsOfDirectory(atPath: paths.configurationDirectory.path)
         #expect(entries == ["repository.mlock"])

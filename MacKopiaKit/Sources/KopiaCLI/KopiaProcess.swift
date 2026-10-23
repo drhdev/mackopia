@@ -36,7 +36,7 @@ actor KopiaProcess: KopiaProcessRunning {
         }
     }
 
-    private static func validated(_ input: KopiaProcessRequest) throws -> KopiaProcessRequest {
+    static func validated(_ input: KopiaProcessRequest) throws -> KopiaProcessRequest {
         let allowed = Set([
             "HOME", "USER", "LANG", "LC_ALL", "TMPDIR", "KOPIA_CHECK_FOR_UPDATES",
             "KOPIA_PASSWORD", "KOPIA_LOG_DIR", "KOPIA_CACHE_DIRECTORY",

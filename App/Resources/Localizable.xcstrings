@@ -110,6 +110,176 @@
           }
         }
       }
+    },
+    "Der Schlüsselbund ist nicht verfügbar.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The keychain is unavailable."
+          }
+        }
+      }
+    },
+    "Die Zugangsdaten konnten nicht gespeichert werden.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The credentials could not be saved."
+          }
+        }
+      }
+    },
+    "Der Zugriff auf den Schlüsselbund wurde abgelehnt.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Access to the keychain was denied."
+          }
+        }
+      }
+    },
+    "Das Laufwerk ist nicht verfügbar.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The volume is unavailable."
+          }
+        }
+      }
+    },
+    "Das angeschlossene Laufwerk stimmt nicht überein.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The connected volume does not match."
+          }
+        }
+      }
+    },
+    "Die Backup-Konfiguration ist ungültig.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The backup configuration is invalid."
+          }
+        }
+      }
+    },
+    "Der Zugriff auf den Ordner wurde abgelehnt.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Access to the folder was denied."
+          }
+        }
+      }
+    },
+    "Der Ordner ist nicht verfügbar.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The folder is unavailable."
+          }
+        }
+      }
+    },
+    "Das Speicherziel wird gerade verwendet.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The destination is currently in use."
+          }
+        }
+      }
+    },
+    "Ein anderer Vorgang läuft bereits.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Another operation is already running."
+          }
+        }
+      }
+    },
+    "Die Sicherungsfunktion muss aktualisiert werden.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The backup engine needs to be updated."
+          }
+        }
+      }
+    },
+    "Gib dein Backup-Passwort ein.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter your backup password."
+          }
+        }
+      }
+    },
+    "Die Laufwerksüberwachung ist nicht verfügbar.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Volume monitoring is unavailable."
+          }
+        }
+      }
+    },
+    "Die verfügbaren Quellen haben sich geändert.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The available sources have changed."
+          }
+        }
+      }
+    },
+    "Die Sicherung konnte nicht abgeschlossen werden.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The backup could not be completed."
+          }
+        }
+      }
+    },
+    "Ein benötigtes Laufwerk ist nicht mehr verfügbar.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A required volume is no longer available."
+          }
+        }
+      }
+    },
+    "MacKopia sichert gerade auf diesem Laufwerk.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "MacKopia is currently using this volume for a backup."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

@@ -307,6 +307,7 @@ kopia server start
   --log-dir=… --cache-directory=…           # Flag hier im server-start-Kontext zulässig
   --address=127.0.0.1:0                      # zufälliger freier Port, nur Loopback
   --tls-generate-cert                        # Ad-hoc-Zertifikat; Fingerprint wird gepinnt
+  --tls-generate-cert-valid-days=365         # macOS lehnt den 3650-Tage-Standard ab
   --tls-generate-rsa-key-size=2048
   --tls-print-server-cert                    # Base64-PEM zum Aufbau des gepinnten TLS-Vertrauens
   --random-password                          # Basic-Auth-Passwort, nur im Speicher
@@ -416,6 +417,11 @@ enum RepositoryKind {
   case s3(endpoint: String, bucket: String, prefix: String, region: String?, objectLock: Bool)
 }
 
+enum SFTPAuth {
+  case password(secretRef: SecretRef)
+  case privateKey(secretRef: SecretRef, passphraseRef: SecretRef?)
+}
+
 struct VolumeIdentity { uuid: String; name: String; isRemovable: Bool; isNetwork: Bool
                         remountURL: URL? /* smb://… aus URLResourceKey.volumeURLForRemountingKey */ }
 
@@ -448,17 +454,66 @@ struct HealthThresholds { warnAfter: Duration /* Standard 3 Tage */; criticalAft
 verarbeitet seine Quellen **sequenziell** (schonend für I/O, klarer Fortschritt). Unterschiedliche Repositories dürfen
 parallel laufen (Limit konfigurierbar, Standard 1 global → vorhersehbar, Akku-schonend).
 
+Speicherziel-Metadaten werden bei Initialisierung, Decoding und Encoding validiert. WebDAV-/S3-Endpunkte
+enthalten keine URL-Zugangsdaten, Query oder Fragmente; HTTP/HTTPS bleiben für konfigurierte Ziele zulässig.
+SFTP speichert ausschließlich Schlüsselbund-Referenzen für Passwort bzw. privaten Schlüssel und optionale Passphrase,
+sowie einen bestätigten SHA256-Host-Key-Fingerprint im OpenSSH-Format. Das Modell selbst bestätigt keinen Host-Key
+und implementiert noch keinen Secret-Transport. WebDAV-/S3-Backend-Zugangsdaten und deren Zuordnung zu
+Schlüsselbund-Referenzen werden mit der späteren Engine-Anbindung ergänzt; `Repository.secretRef` bezeichnet das Backup-Passwort.
+Ein Dateisystem-Ziel ohne gebundene Volume-Identität ist lediglich vorbereitete Konfiguration und darf nicht geöffnet werden.
+
 **Policy-Übersetzung (`PolicyTranslator`)**: Retention, Excludes und Compression werden **pro Quelle** als Kopia-Policy
 gesetzt (idempotent, vor jedem Lauf abgeglichen, wenn sich der Plan-Hash geändert hat). Gehören zwei Pläne zur gleichen
 Quelle im selben Repo, ist das ein Validierungsfehler im Editor (sonst würden sich die Policies überschreiben).
 
+Plan-Metadaten werden auch beim Decoding validiert: nichtleere Quellen-/Triggerlisten, eindeutige Quell-IDs
+und wörtliche Quellpfade pro Plan, gültige Uhrzeiten/Wochentage, positive Intervalle und geordnete positive
+Health-Schwellen. Health-Dauern werden verlustfrei als Sekunden-/Attosekunden-Paar gespeichert.
+Benannte Aufbewahrungs-Presets müssen exakt §10 entsprechen; individuelle nichtnegative Werte einschließlich
+nil/0 bleiben als „Eigene“ möglich. Das Modell führt keine Löschung oder Policy-Übertragung aus.
+Numerische Prozess-/Byte-Konvertierungen müssen überlauffrei bleiben; nichtendliche Bandbreiten werden abgewiesen.
+Konfigurationsgrenzen: 1024 Quellen und 64 Trigger pro Plan, 4096 einzeilige Ausschlussmuster mit je höchstens
+16 KiB und zusammen 1 MiB; optionale WLAN-Namen höchstens 256 eindeutige Einträge à 32 UTF-8-Bytes.
+WLAN-Bedingungen bleiben Metadaten für Phase 2 und werden noch nicht ausgewertet.
+
+`PlanSetValidator` prüft den vollständigen vorgesehenen Konfigurationsstand vor dem Speichern: eindeutige
+Plan-/Speicherziel-IDs, vorhandene Speicherziel-Referenzen und keine doppelte Kombination aus Speicherziel-ID
+und wörtlichem Kopia-Quellpfad, auch bei deaktivierten Plänen oder abweichenden Volume-UUIDs. Ein Edit ersetzt
+dabei den bisherigen Plan mit derselben UUID. Verschachtelte unterschiedliche Pfade bleiben eigenständige
+Kopia-Quellen. Symlinks, tatsächliche Volumes und doppelt registrierte physische Speicherziele muss zusätzlich
+die spätere Engine-Vorabprüfung behandeln; diese reine Modellprüfung ersetzt sie nicht.
+
 ### 7.2 Konfiguration & Migration
 
 - `ConfigStore` (Actor) im Agent: Datei `~/Library/Application Support/MacKopia/config.json`
-  mit `schemaVersion`, atomarer Write (`Data.write(options: .atomic)`), Backup der vorherigen Version (`config.json.bak`).
+  mit `schemaVersion`, atomarer Write (geschützte temporäre Datei, fsync, rename im selben Verzeichnis),
+  Backup der vorherigen Version (`config.json.bak`).
 - Migrationen als geordnete Funktionen `vN → vN+1` mit Unit-Tests pro Schritt.
 - Lesefehler → Agent startet im **Sicherheitsmodus** (keine Jobs), UI bietet „Backup der Konfiguration wiederherstellen“.
 - Export/Import der Konfiguration (ohne Secrets) für Umzug auf einen neuen Mac.
+
+Schema 1 enthält `schemaVersion` und `configuration` (validierte Speicherziele/Pläne, nur Secret-Referenzen).
+Maximal 16 MiB pro Dokument, 1024 Speicherziele und 4096 Pläne. Unversionierte, beschädigte oder neuere
+unbekannte Dokumente werden nicht als leere Konfiguration interpretiert. Fehlende Primärdatei ist nur dann
+ein erster Start, wenn auch keine Sicherungskopie existiert. Laden liefert explizit Konfiguration oder
+Sicherheitsmodus; normale Schreibzugriffe erfordern erfolgreiches Laden. Die Engine muss diesen Zustand
+später vor Job-Freigabe auswerten; die Persistenzschicht selbst startet keine Jobs.
+
+Speicherverzeichnis 0700, reguläre Dateien/Schreibsperre/temporäre Dateien 0600, Eigentümer aktueller Benutzer;
+Symlinks und mehrfach verlinkte Dateien werden abgewiesen. Verzeichnisgebundene Dateideskriptoren und
+`openat`/`renameat` halten Operationen am geprüften Verzeichnis. Eine nichtblockierende Dateisperre serialisiert
+kooperierende Schreiber; ein Vergleich mit den zuletzt geladenen Bytes verhindert verlorene Änderungen
+zwischen Store-Instanzen. Fehler nach begonnenem Schreiben sperren weitere normale Writes bis zum Neuladen.
+Backup wird vor Primärdatei ersetzt, jeweils atomar. Ein Prozessabsturz kann eine geschützte temporäre Datei
+hinterlassen; automatische Bereinigung solcher Altdateien ist noch nicht implementiert. Keine Garantie gegen
+einen nichtkooperierenden Prozess mit denselben Benutzerrechten oder gegen Stromausfall aller Speichermedien.
+
+Migrationen laufen ausschließlich vorwärts und müssen pro Schritt genau `vN → vN+1` liefern; danach erfolgt
+vollständige Modellvalidierung. Laden migriert nur im Speicher, der nächste Save sichert die Originalbytes.
+Aktuell existiert nur Schema 1, keine erfundene Vorgängermigration. Wiederherstellung ist ein separater,
+explizit durch die Benutzeraktion aufzurufender Vorgang: Backup erst validieren, Primärdatei atomar ersetzen,
+Backup unverändert behalten. Keine automatische Reparatur und keine automatische Freigabe von Jobs.
+Export/Import sowie UI-/Agent-Anbindung folgen separat.
 
 ### 7.3 Scheduler
 
@@ -589,6 +644,155 @@ Vor **jedem** Lauf, in dieser Reihenfolge. Jede Prüfung liefert `ok | warning |
 7. Festplattenvollzugriff vorhanden, wenn Quellen TCC-geschützte Bereiche enthalten (Home, Desktop, Dokumente, Mail …).
 8. Ausführungsbedingungen (Netzteil, Netzwerk, Stromsparmodus).
 9. Kein anderer Lauf/Wartung auf demselben Repo aktiv.
+
+`BackupPrerequisitePreflight` verbindet zunächst die ersten beiden Prüfschritte: frische Binary-Prüfung,
+danach ausschließlich lesender Zugriff auf `Repository.secretRef` für das Backup-Passwort. Fehlendes Passwort
+blockiert mit einer Eingabeaufforderung; Schlüsselbundfehler bleiben von „nicht vorhanden“ unterscheidbar.
+Der Secret-Wert wird weder zurückgegeben noch in einem Preflight-Bericht gespeichert. Eine spätere Operation
+muss ihn erneut lesen; Backend-Zugangsdaten für SFTP/S3/WebDAV sind damit noch nicht geprüft.
+
+`KopiaBinaryVerifier` verlangt eine vorhandene reguläre ausführbare Datei ohne finalen Symlink und vergleicht
+eine frische `--version`-Antwort mit der explizit aus `Config/kopia-version.json` zu liefernden Version.
+Die Abfrage verwendet den nativen Runner ohne Secrets, mit isolierten Config-/Log-/Cachepfaden, Whitelist-Environment,
+10 Sekunden Timeout, Abbrucheskalation/Reaping und höchstens 4 KiB pro Ausgabekanal. Nicht-Null-Exit,
+fehlende/ungültige Antwort oder Versionsabweichung blockieren; rohe Prozessausgaben werden nicht weitergereicht.
+Der selbst gemeldete Versionsstring ersetzt keine Download-Hash-/Signaturprüfung. Eine Dateiprüfung vor Spawn
+verhindert keinen Austausch zwischen Prüfung und Ausführung; Bundle-Vertrauen/Release-Signierung und erneute
+Prüfung vor produktiven Starts bleiben erforderlich. Die Verknüpfung mit Agent/Bundle-Pin und Live-Adaptern für alle Prüfschritte ist noch nicht implementiert.
+
+Die erste Engine-Teilprüfung `BackupPathPreflight` prüft Plan-/Speicherziel-Zuordnung sowie Pfade und
+Volume-Identitäten. Überlappende Quellen innerhalb eines Plans werden blockiert; Quelle und Dateisystem-Ziel
+dürfen weder identisch noch ineinander enthalten sein. Verglichen werden Pfadkomponenten (kein bloßer
+String-Präfix) sowie frisch ermittelte kanonische Pfade nach Symlink-Auflösung; auf Volumes ohne
+Groß-/Kleinschreibung wird konservativ ohne diese Unterscheidung verglichen. Fehlende kanonische Pfad-,
+Volume- oder Case-Sensitivity-Metadaten gelten als nicht verfügbare Beobachtung. Es werden ausschließlich
+bestehende Verzeichnisse betrachtet, keine Eltern-Fallbacks, Verzeichniserstellung oder Mounts.
+
+Ein Dateisystem-Ziel ohne gebundene UUID, auf falschem Volume oder mit fehlenden Metadaten blockiert die
+Teilprüfung. Quellen mit fehlendem Verzeichnis, falscher Volume-UUID oder verweigertem Metadatenzugriff
+werden einzeln als `skipped` ausgewiesen; ein späterer Lauf darf nur explizit geprüfte Quellen verwenden.
+Sind alle übersprungen, darf kein Snapshot gestartet werden. Die Prüfung ist ein Zeitpunktbefund,
+keine Startfreigabe: Reihenfolge aller neun Prüfungen oben, unmittelbare Wiederprüfung vor Operationen
+und Live-Unmount-Überwachung müssen bei der Orchestrierung erhalten bleiben. Diese Teilprüfung implementiert
+selbst noch keine Remote-Erreichbarkeit, Rechte-/Kapazitätsprüfung, FDA-Prüfung oder Keychain-/Binary-Prüfung. Alias-Konflikte zwischen verschiedenen Plänen, mehrfach registrierte physische Ziele sowie
+Symlinks innerhalb des gesamten Quellbaums bleiben zusätzliche Prüfaufgaben.
+
+`RunConditionEvaluator` wertet injizierte, kurzlebige Beobachtungen aus. Eingeschaltete Bedingungen benötigen
+bekannte Werte; unbekannt bedeutet überspringen. Netzteilpflicht verlangt Netzstrom und ausgeschalteten
+Stromsparmodus. Mindestladung wird bei vorhandener Batterie inklusive Grenzwert geprüft, bei sicher
+bekanntem Desktop ohne Batterie nicht benötigt. Teure/eingeschränkte Netze werden unabhängig ausgewertet;
+die konfigurierten Bedingungen gelten auch für lokale Ziele. Gespeicherte WLAN-Beschränkungen ohne den noch
+fehlenden SSID-Monitor führen zu `wifiConditionUnavailable`, statt stillschweigend ignoriert zu werden.
+Catch-up bleibt eine Scheduler-Regel. Kontinuierliche Power-/Netzwerk-Monitore und UI-Anzeigen dieser Gründe folgen separat.
+
+`LocalRunEnvironmentSampler` ist der Standardadapter für Schritt 8 und verbindet zwei frische, parallele
+SystemIntegration-Abfragen ohne Zustandscache: `LocalPowerStateSampler` liest IOKit-Power-Sources sowie
+`ProcessInfo.isLowPowerModeEnabled`; `LocalNetworkPathSampler` nimmt das erste Update eines neuen
+`NWPathMonitor` über dessen AsyncSequence entgegen. Das Netzwerkfenster beträgt fünf Sekunden mit
+injizierbarer Clock; bei Timeout oder nicht erfülltem Netzwerkpfad bleiben beide Netzwerkwerte unbekannt.
+Abbruch beendet den Monitor, der strukturierte Aufruf wartet auf die Bereinigung beider Kindaufgaben.
+Es werden keine Verbindungen zu Speicherzielen und keine SSID-Abfragen ausgelöst. Dies bestätigt weder
+Internet-/Ziel-Erreichbarkeit noch Backend-Zugangsdaten.
+
+Die Energieabfrage unterscheidet interne Batterien von USV-Quellen. Nur eine vollständig bekannte Liste ohne
+interne Batterie bestätigt einen Desktop ohne Batterie; fehlende Beschreibungen/Typen bleiben unbekannt.
+Bei mehreren internen Batterien gilt der niedrigste ganzzahlig abgerundete Kapazitätsanteil; alle Werte müssen
+gültig und die Batterien als vorhanden gemeldet sein. Fehlende, widersprüchliche oder überlaufende Werte
+erfüllen keine Mindestladung. Netzstrom und Stromsparmodus bleiben unabhängig; USV-Betrieb erfüllt keine
+Netzteilpflicht. Abfragen sind Zeitpunktbefunde, keine laufende Überwachung und kein atomarer gemeinsamer
+Systemzustand. Vor produktiven Operationen müssen Bedingungen erneut geprüft werden; Trigger- und
+Unmount-Monitore sowie Agent-Verdrahtung bleiben separat offen.
+
+`FilesystemDestinationPreflight` ergänzt für bestehende lokale Ziele eine frische gemeinsame Beobachtung
+von Volume-UUID, Verzeichnis-Schreibrecht und `volumeAvailableCapacityForImportantUsageKey` sowie
+Gesamtkapazität. Falsche UUID, fehlende Metadaten oder fehlendes Schreibrecht blockieren; keine Testdatei
+wird angelegt. Kapazitätsgrenzen sind dezimale GB: unter 1 GB blockierend, sonst unter 5 GB oder unter
+5 % Warnung, bei exakter Grenze keine zusätzliche Warnung. Die Prozentprüfung bleibt auch bei Int64-Maximalwerten
+überlauffrei. Dies ersetzt weder den Server-Status noch die unmittelbare Wiederprüfung vor Schreiboperationen;
+Berechtigungen und Kapazität können sich jederzeit ändern.
+
+`RepositoryOperationGate` ist eine gemeinsam zu verwendende Engine-Instanz für Backup und Wartung.
+Sie lässt je Speicherziel-UUID höchstens eine Operation und global standardmäßig eine Operation zu;
+ein positives höheres Limit erlaubt unterschiedliche Ziele parallel. Belegte Ziele bzw. ausgeschöpfte
+Parallelität werden typisiert abgewiesen, noch nicht eingereiht. Die Sperre wird nach Rückkehr der Operation
+auch bei Fehlern freigegeben; Cancellation allein gibt sie nicht vorzeitig frei. Die Operation muss deshalb
+bis zum vollständigen Kindprozess-Cleanup/Reaping laufen. Auch verschachtelte Zugriffe werden abgewiesen.
+Die Sperre gilt nur innerhalb dieser Instanz/des Prozesses; Agent-Verdrahtung, Queue/Fairness, Abgleich
+mehrfach registrierter physischer Ziele und prozessübergreifende Sperren bleiben offen.
+
+`BackupPreflight.evaluate` verbindet die Bausteine zu einem geordneten **Diagnoseablauf**. Sein Bericht enthält
+nur typisierte Prüfschritte, Status/Grund, vorgeschlagene Aktion und Quellen-IDs mit ihren Statuswerten;
+keine Pfade, Zugangsdaten oder rohen Adapterfehler. Bei einem blockierenden Fehler endet die Prüfung sofort,
+bei niedriger Kapazität läuft sie mit Warnung weiter. Verfügbare Quellen bleiben in Planreihenfolge, fehlende
+Quellen werden nicht an die Zugriffsprüfung übergeben. Sind alle Quellen übersprungen, lautet das Ergebnis
+`skipped`. Nicht erfüllte Laufbedingungen führen ebenfalls zu `skipped`; erfolgreiche Einzelprüfungen ergeben
+`checksPassed`, ausdrücklich keine wiederverwendbare Startfreigabe. Cancellation bleibt ein geworfener Abbruch
+und wird nicht als Diagnosefehler gespeichert.
+
+Die gemeinsame Operationssperre wird **vor jedem Adapterzugriff** reserviert, damit schon die Vorprüfung keine
+konkurrierenden Zielzugriffe auslöst. Eine belegte Sperre beendet die Prüfung sofort mit Schritt 9 und Warteaktion;
+bei erfolgreicher Reservierung werden die fachlichen Schritte 1–8 in Reihenfolge und Schritt 9 zuletzt berichtet.
+Für Dateisystem-Ziele werden Identität vor Rechten/Kapazität und Quellen erst danach geprüft. Bei Remote-Zielen
+sind lokale Volume-Identität/Kapazität als nicht anwendbar markiert; der injizierte Remote-Adapter muss Backend-
+Zugangsdaten und authentifizierten Lese-/Schreibzugriff tatsächlich bestätigen. Der Quellzugriffsadapter muss
+für sämtliche verfügbaren Quellen auch eventuell nötigen FDA-/TCC-Zugriff bestätigen. Fehlende Live-Adapter
+melden `unknown` und blockieren; sie erteilen niemals pauschal Zugriff. Die Energie-/Netzwerkbeobachtung ist
+in gleicher Weise injizierbar, unbekannte Werte erfüllen weiterhin keine eingeschaltete Bedingung.
+
+Der Diagnoseaufruf gibt seine Sperre bei Rückkehr/Fehler frei. Ein späterer Backup-Start muss den gesamten
+Prüf-/Sicherungs-/Cleanup-Lebenszyklus gemeinsam reservieren, die Prüfungen frisch ausführen und die Ziel-/
+Quellenidentität unmittelbar vor Zugriff erneut prüfen sowie Unmounts überwachen. Weder Berichte aufbewahren
+und später als Freigabe nutzen noch nach `evaluate` ungeschützt starten. Live-Adapter für FDA-/Quellzugriff und authentifizierten Remote-Zugriff, dieser
+zusammenhängende Ausführungspfad, Queue und Agent-Verdrahtung sind noch offen.
+
+`BackupOperationCoordinator.perform` ergänzt eine interne, noch nicht an Agent/Kopia angeschlossene
+Operationsgrenze. Dieselbe Reservierung umfasst erste Vorprüfung, Aktivierung des injizierten
+Laufwerksschutzes, vollständige frische Vorprüfung nach dieser möglichen Suspension, unmittelbare erneute
+Ziel-/Quellenidentitätsprüfung, Operation und sämtliche Bereinigung. Ein abweichender Quellenstatus bei der
+letzten Prüfung bricht ab; die Operation erhält ausschließlich die zuletzt verfügbaren Quellen in Planreihenfolge.
+Blockierende/übersprungene Vorprüfungen starten keine Operation. Auch ein Abbruch während der asynchronen
+Monitor-Bereinigung bleibt ein Abbruch und wird erst nach dieser Bereinigung weitergegeben.
+
+Der Schutzadapter muss alle relevanten Volumes vor dem Callback überwachen, bei Verschwinden abbrechen,
+das Prozess-Cleanup/Reaping abwarten und die Überwachung anschließend auf jedem Ausgang abbauen. Der
+Standardadapter `UnavailableBackupOperationProtection` verweigert die Operation ausdrücklich. Der neue
+`LocalBackupOperationProtection` kann explizit injiziert werden; produktive Agent-/Kopia-Operationen sind
+weiterhin nicht angeschlossen. Die vertrauenswürdige Operationsimplementierung muss ausschließlich die
+übergebenen Quellen verwenden, Secrets frisch auflösen und alle Kindprozesse selbst vollständig bereinigen.
+Ein zurückgegebener Callback-Wert bestätigt keinen erfolgreichen Snapshot; spätere Kopia-Anbindung muss
+dessen Ergebnis prüfen. Beliebige Adapter-/Prozessfehler werden an dieser Grenze statisch klassifiziert,
+Cancellation und bekannte statische Fehler bleiben unterscheidbar. Diagnoseberichte bleiben Zeitpunktbefunde;
+Queue, FDA-/Remote-Live-Adapter, Schutz für Netzwerk-Volumes und Agent-Anbindung sind weiterhin offen.
+
+`LocalBackupOperationProtection` verbindet den reservierten Ablauf mit einer nativen
+`LocalVolumeProtectionMonitor`-Sitzung für die zunächst verfügbaren Quellen und ein Dateisystem-Ziel.
+Wird nach Aktivierung des Schutzes eine weitere Quelle verfügbar, wird dieser Versuch abgebrochen:
+Eine Quelle ohne Schutzabdeckung darf nicht nachträglich in die Operation aufgenommen werden. Die Sitzung
+bleibt bis zum Abschluss der strukturierten Operation einschließlich deren Abbruch-/Prozess-Cleanup aktiv.
+Ein verschwundenes Volume ergibt `volumeDisappeared`; auch ein unerwartet beendeter Ereignisstrom beendet
+die Operation. Ein abschließender aktiver Zustandscheck verhindert Erfolg bei bereits beobachtetem Verlust.
+
+Die native Auflösung liest vorhandene lokale Verzeichnisse außerhalb des Main Actors und bestätigt die
+gespeicherte UUID. **APFS-Firmlinks:** Foundation kann für einen Pfad auf dem Data-Volume `/` als Volume-URL
+liefern; daraus darf nicht das Gerät abgeleitet werden. `statfs` liefert stattdessen das tatsächliche BSD-Gerät
+und den Mountpunkt; anschließend müssen DiskArbitration-UUID und Mountpunkt unabhängig übereinstimmen.
+Netzwerk-Volumes oder nicht eindeutig auflösbare Geräte werden derzeit abgewiesen, nicht ungeschützt zugelassen.
+Gleiche Geräte werden dedupliziert; widersprüchliche UUID-/Mountbeobachtungen blockieren. Synchrone einzelne
+OS-Metadatenaufrufe sind nicht mitten im Aufruf abbrechbar; Cancellation wird vor/nach der Auflösung geprüft.
+
+DiskArbitration-Sitzung und Callbacks laufen serialisiert auf dem Main Actor mit dessen DispatchQueue als
+nativer API-Grenze. Unmount-Anfragen für überwachte Volumes werden mit `kDAReturnBusy` und einer lokalisierten
+Begründung abgelehnt. Verschwinden sowie Änderung/Verlust von Mountpunkt oder UUID erzeugen ein terminales
+Ereignis. Die C-Callbacks tragen nur eine nicht wiederverwendete Kennung; eine schwache Main-Actor-Registry
+löst die Sitzung auf. Abmelden invalidiert die Kennung zuerst, damit verspätete Callbacks keinen freigegebenen
+Sitzungszeiger erreichen können. Callback-Abmeldung, Unscheduling und Stream-Ende sind idempotent; isolierter
+Deinit dient als Rückfall. Keine `@unchecked Sendable`-/unsicheren Isolation-Ausnahmen.
+
+Native Registrierung und C-Callback-Einstiege sind an einem temporären Verzeichnis geprüft; dabei werden
+Unmount/Disappearance nur als Callback-Eingaben simuliert. Echte Eject-/Kabelzieh-/SMB-Tests, Mitteilung mit
+„Backup stoppen & auswerfen“, manuelle Geräteabnahme und produktive Agent-Anbindung bleiben offen. Der
+Standard des Coordinators bleibt bis zu dieser Anbindung ausdrücklich gesperrt. Es wird keine vollständige
+Unmount-/Auswerfen-UX allein durch den nativen Adapter zugesagt.
 
 **Weitere macOS-Fallen, die explizit behandelt werden müssen:**
 - **iCloud Drive / File-Provider-Platzhalter** (Option „Speicher optimieren“, Dropbox, OneDrive): Das Lesen eines
@@ -850,6 +1054,9 @@ Fehler-Mapping gehört in **eine** Datei mit Tests pro Zeile.
 | Datum | Entscheidung | Grund |
 |---|---|---|
 | 2026-10-23 | Hybrid-Integration: `kopia server` (lokal, TLS-Pinning) + CLI `--json` | Strukturierter Fortschritt, Abbruch, Browsing |
+| 2026-10-23 | Engine-Vorabprüfung trennt blockierende Zielprobleme von übersprungenen Quellen; fehlende Beobachtung erfüllt keine Bedingung | §9 präzisiert Pfad-/Volume-Teilprüfung, Überschneidungen, Fallunterscheidung und temporär nicht auswertbare WLAN-Bedingung; keine Job-Startfreigabe oder neue Systemrechte. |
+| 2026-10-23 | ConfigStore verwendet schema-1-Hülle, begrenzte Dokumente und POSIX-atomaren Austausch statt Data.write(.atomic) | 0600 bereits vor dem ersten Byte, verzeichnisgebundener Austausch, Schreibsperre und validierte explizite Recovery; §7.2 präzisiert. Keine Kopia- oder Secret-Dateien. |
+| 2026-10-23 | Plan-Modelle validieren Init/Decoding, Preset-Konsistenz und begrenzte Konfiguration; Quellenkonflikte gelten auch für deaktivierte Pläne | Verhindert ungültige Scheduler-/Policy-Eingaben und spätere stille Policy-Überschreibung; §7.1 präzisiert technische Grenzen. Keine Laufzeit-/Löschaktion. |
 | 2026-10-23 | Mindest-OS macOS 26 Tahoe | Liquid Glass, aktuelle SwiftUI/XPC-APIs |
 | 2026-10-23 | Kopia 0.23.1 im Bundle mitgeliefert, Version gepinnt | Reproduzierbarkeit, Unabhängigkeit von Homebrew |
 | 2026-10-23 | Ziele v1: Dateisystem (lokal/USB/SMB), SFTP, WebDAV, S3-kompatibel | Nutzerwunsch |
@@ -880,6 +1087,14 @@ Fehler-Mapping gehört in **eine** Datei mit Tests pro Zeile.
 | 2026-10-23 | WebDAV-Spike: `--create-only` ohne lokale Secret-Datei; Policy/Owner explizit setzen; Pipe über schreibgeschützten Symlink-Pfad mit gemeinsamer Wartungssperre | Anlegen, schnelle Wartung, Backup/Restore und Crash-Neustart geprüft. Reiner `/dev/fd`-Pfad scheitert bei `.mlock`; fehlende Cache-Kapazitäten können Kopia-Panic auslösen. Produktionsübernahme der Pipe-Übergabe als Präzisierung von AGENTS.md §2.4 noch nicht beschlossen |
 | 2026-10-23 | WebDAV-Laufzeitkonfiguration über explizit vererbte anonyme Pipe freigegeben | Nutzerbestätigung: Secrets dauerhaft nur im Schlüsselbund, JSON nur im Speicher; frische Pipe, geschützter Symlink-Pfad, gemeinsame Wartungssperre und Cleanup verbindlich. Keine reguläre Secret-Datei und keine Kopia-Konfigurations-Schreiboperationen; AGENTS.md §2.4 und §6.2/§8 präzisiert |
 | 2026-10-23 | Lokale Builds führen vorerst keine expliziten Signierschritte aus (`CODE_SIGNING_ALLOWED=NO`) | Nutzer stellt Signierung bis spätere Releases zurück; Fetch-/Embed-Skripte respektieren dies ebenfalls. Hardened-Runtime-Konfiguration und XPC-Signaturprüfung bleiben bestehen; vor Releases explizit aktivieren |
+| 2026-10-23 | Native URLSession prüft Leaf-Pin, exakten Zertifikat-Anker und SSL-Policy für 127.0.0.1; Kopia-Start mit `--tls-generate-cert-valid-days=365` | Kopia 0.23.1 erzeugt standardmäßig Zertifikate für 3650 Tage; macOS lehnt diese mit Security-Code -67901 ab. 365 Tage gegen echten Server erfolgreich, keine Trust-Ausnahmen/ATS-Lockerung. Async-Bytes-Tasks bekommen den Delegate explizit; CSRF und Cookie nur im Speicher |
+| 2026-10-23 | Speicherziel-Metadaten mit Validierung vor JSON-Encoding; SFTP-Authentifizierung nur als Schlüsselbund-Referenzen und SHA256-Host-Key-Pin modellieren | Präzisierung von §7.1 gemäß Secret-Invariante; kein privater Schlüssel als Config-/Datei-Payload. Keine Remote-Verbindung, Host-Key-Bestätigung oder produktive SFTP-Zuführung allein durch gültige Metadaten; WebDAV-/S3-Credential-Zuordnung folgt mit Engine |
+| 2026-10-23 | Lokale Rechte-/Kapazitätsprüfung ohne Schreibprobe und gemeinsame Engine-Operationssperre ergänzt | §9: dezimale GB und strikte Schwellen; Sperre gilt während Cleanup auch bei Abbruch. Bausteine noch ohne Agent-/Queue-Anbindung; keine Startfreigabe allein durch einzelne Teilprüfung. |
+| 2026-10-23 | Binary-Version und Backup-Passwort werden als erste zwei Preflight-Schritte frisch geprüft | §9: isolierte begrenzte Versionsabfrage ohne Secrets, danach nur lesender Schlüsselbundzugriff; keine Secret-Payload im Ergebnis und keine Freigabe allein durch diese Teilprüfung. Gepinnte Version wird explizit aus der bestehenden Konfiguration geliefert, nicht als zweiter Versionspin eingeführt. |
+| 2026-10-23 | Preflight-Bausteine als geordneten Diagnoseablauf mit typisiertem Bericht verbinden; Sperre bereits vor Adapterzugriff reservieren | §9: fachliche Reihenfolge unter Reservierung, Busy endet sofort; unbekannter FDA-/Remote-Zugriff blockiert, fehlende Quellen/Laufbedingungen überspringen. Bericht ist keine Startfreigabe, Diagnose gibt Sperre bei Rückkehr frei; produktiver Lifecycle bleibt offen. |
+| 2026-10-23 | Frische Energie-/Netzwerkabfragen als Standard für Preflight-Schritt 8 | §9: IOKit-Power-Sources und NWPathMonitor-AsyncSequence ohne Cache; fünf Sekunden bis zur ersten Pfadbeobachtung, sonst unbekannt. Abbruch bereinigt Beobachter; kein Erreichbarkeits-/SSID-/FDA-Nachweis und noch keine kontinuierlichen Trigger-Monitore. |
+| 2026-10-23 | Reservierte Operationsgrenze mit frischer Wiederprüfung und verpflichtendem Live-Schutz ergänzt | §9: Sperre bis nach Operations-/Monitor-Cleanup halten, nach Aktivierung des Schutzes erneut prüfen und Identitäten unmittelbar vor Callback prüfen; fehlender Schutz verweigert Start. Noch keine produktive Kopia-/Agent-Anbindung, Schutzadapter aktuell nur in Tests. |
+| 2026-10-24 | Nativen lokalen Volume-Schutz über DiskArbitration als expliziten Adapter ergänzt; APFS-Gerät per statfs auflösen | §9: lokale UUID-/Mountbestätigung, Unmount-Veto, terminale Verlustereignisse und Cleanup unter bestehender Reservierung; schwache Callback-Kennungen verhindern späte Zeigerzugriffe. Neu verfügbare ungeschützte Quellen/Netzwerk-Volumes blockieren; Agent-/Benachrichtigungs-UX und echte Eject-Abnahme offen. |
 | … | *(Spike-Ergebnisse aus Phase 0 hier eintragen)* | |
 
 ---

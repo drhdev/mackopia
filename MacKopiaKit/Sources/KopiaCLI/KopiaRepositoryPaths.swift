@@ -1,13 +1,13 @@
 import Foundation
 
 /// App-owned local state, identified by UUID. Destination/source paths never enter this factory.
-struct KopiaRepositoryPaths: Sendable {
-    let homeDirectory: URL
-    let configurationDirectory: URL
-    let cacheDirectory: URL
-    let logDirectory: URL
+package struct KopiaRepositoryPaths: Sendable {
+    package let homeDirectory: URL
+    package let configurationDirectory: URL
+    package let cacheDirectory: URL
+    package let logDirectory: URL
 
-    init(repositoryID: UUID, homeDirectory: URL) throws {
+    package init(repositoryID: UUID, homeDirectory: URL) throws {
         guard homeDirectory.isFileURL, !homeDirectory.path.utf8.contains(0) else {
             throw KopiaProcessError.invalidRequest
         }
