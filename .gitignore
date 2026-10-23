@@ -1,0 +1,41 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Xcode
+xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+DerivedData/
+build/
+*.xcarchive
+*.dSYM.zip
+*.dSYM
+*.ipa
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved.orig
+
+# Downloaded kopia binaries (produced by Scripts/fetch-kopia.sh)
+Vendor/
+
+# Release artefacts
+*.dmg
+dist/
+
+# Secrets / local config (never commit)
+*.p12
+*.cer
+*.mobileprovision
+.env
+.env.*
+Config/Local.xcconfig
+
+# Agent tooling (local only)
+.claude/settings.local.json
+.claude/.cc-writes/
+.codex/
