@@ -39,3 +39,7 @@ Config/Local.xcconfig
 .claude/settings.local.json
 .claude/.cc-writes/
 .codex/
+
+# Python build-helper caches
+__pycache__/
+*.py[cod]

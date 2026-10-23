@@ -1,0 +1,51 @@
+{
+  "source": {
+    "host": "test-host",
+    "userName": "test-user",
+    "path": "/fixture/source"
+  },
+  "status": "IDLE",
+  "schedule": {
+    "runMissed": true
+  },
+  "lastSnapshot": {
+    "id": "e1b2e294af54e638a70f78137759621b",
+    "source": {
+      "host": "test-host",
+      "userName": "test-user",
+      "path": "/fixture/source"
+    },
+    "description": "",
+    "startTime": "2026-10-23T15:00:11.593074Z",
+    "endTime": "2026-10-23T15:00:16.881505Z",
+    "stats": {
+      "totalSize": 268435456,
+      "excludedTotalSize": 0,
+      "fileCount": 94,
+      "cachedFiles": 34,
+      "nonCachedFiles": 94,
+      "dirCount": 1,
+      "excludedFileCount": 0,
+      "excludedDirCount": 0,
+      "ignoredErrorCount": 0,
+      "errorCount": 0
+    },
+    "rootEntry": {
+      "name": "source",
+      "type": "d",
+      "mode": "0755",
+      "mtime": "2026-10-23T15:00:05.895527833Z",
+      "uid": 501,
+      "gid": 20,
+      "obj": "k5ae6545491008a705d56fc900198a1ed",
+      "summ": {
+        "size": 268435456,
+        "files": 128,
+        "symlinks": 0,
+        "dirs": 1,
+        "maxTime": "2026-10-23T15:00:05.895720167Z",
+        "numFailed": 0
+      }
+    }
+  }
+}

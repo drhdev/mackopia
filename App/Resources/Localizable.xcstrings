@@ -1,0 +1,116 @@
+{
+  "sourceLanguage": "de",
+  "strings": {
+    "MacKopia wird vorbereitet": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "MacKopia is being prepared"
+          }
+        }
+      }
+    },
+    "Backup-Funktionen werden in den nächsten Entwicklungsschritten eingerichtet.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Backup features will be added in the next development steps."
+          }
+        }
+      }
+    },
+    "Einstellungen folgen in einem späteren Entwicklungsschritt.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Settings will be added in a later development step."
+          }
+        }
+      }
+    },
+    "Für den Hintergrunddienst ist eine gültige App-Signatur erforderlich.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The background service requires a valid app signature."
+          }
+        }
+      }
+    },
+    "Der Hintergrunddienst ist nicht verfügbar.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The background service is unavailable."
+          }
+        }
+      }
+    },
+    "Der Hintergrunddienst antwortet nicht.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The background service is not responding."
+          }
+        }
+      }
+    },
+    "Starte MacKopia und den Hintergrunddienst neu, um die Versionen abzugleichen.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Restart MacKopia and the background service to align their versions."
+          }
+        }
+      }
+    },
+    "Die Antwort des Hintergrunddienstes konnte nicht geprüft werden.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The background service response could not be verified."
+          }
+        }
+      }
+    },
+    "Das Speicherziel konnte nicht sicher geöffnet werden.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The destination could not be opened securely."
+          }
+        }
+      }
+    },
+    "Das Speicherziel antwortet nicht rechtzeitig.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The destination did not respond in time."
+          }
+        }
+      }
+    },
+    "Die Sicherungsfunktion konnte nicht ausgeführt werden.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The backup operation could not be performed."
+          }
+        }
+      }
+    }
+  },
+  "version": "1.0"
+}

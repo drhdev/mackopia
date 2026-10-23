@@ -1,0 +1,45 @@
+{
+  "id": "3",
+  "startTime": "2026-10-23T16:28:08.174859+02:00",
+  "endTime": "2026-10-23T16:28:08.175036+02:00",
+  "kind": "Estimate",
+  "description": "/fixture/source",
+  "status": "SUCCESS",
+  "progressInfo": "",
+  "counters": {
+    "Bytes": {
+      "value": 30,
+      "units": "bytes",
+      "level": ""
+    },
+    "Directories": {
+      "value": 1,
+      "level": ""
+    },
+    "Errors": {
+      "value": 0,
+      "level": "error"
+    },
+    "Excluded Bytes": {
+      "value": 0,
+      "units": "bytes",
+      "level": ""
+    },
+    "Excluded Directories": {
+      "value": 0,
+      "level": ""
+    },
+    "Excluded Files": {
+      "value": 0,
+      "level": ""
+    },
+    "Files": {
+      "value": 2,
+      "level": ""
+    },
+    "Ignored Errors": {
+      "value": 0,
+      "level": "error"
+    }
+  }
+}

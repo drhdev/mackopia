@@ -1,0 +1,40 @@
+{
+  "id": "4",
+  "startTime": "2026-10-23T16:28:08.181747+02:00",
+  "kind": "Restore",
+  "description": "Destination: /fixture/restored",
+  "status": "RUNNING",
+  "progressInfo": "",
+  "counters": {
+    "Ignored Errors": {
+      "value": 0,
+      "level": ""
+    },
+    "Restored Bytes": {
+      "value": 0,
+      "units": "bytes",
+      "level": ""
+    },
+    "Restored Directories": {
+      "value": 0,
+      "level": ""
+    },
+    "Restored Files": {
+      "value": 0,
+      "level": ""
+    },
+    "Restored Symlinks": {
+      "value": 0,
+      "level": ""
+    },
+    "Skipped Bytes": {
+      "value": 0,
+      "units": "bytes",
+      "level": ""
+    },
+    "Skipped Files": {
+      "value": 0,
+      "level": ""
+    }
+  }
+}

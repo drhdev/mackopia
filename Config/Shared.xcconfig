@@ -1,0 +1,22 @@
+MACOSX_DEPLOYMENT_TARGET = 26.0
+SWIFT_VERSION = 6.0
+SWIFT_STRICT_CONCURRENCY = complete
+SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor
+ENABLE_HARDENED_RUNTIME = YES
+ALWAYS_SEARCH_USER_PATHS = NO
+COPY_PHASE_STRIP = NO
+ENABLE_APP_SANDBOX = NO
+// User decision: no signing during current development. Enable explicitly for later releases.
+CODE_SIGNING_ALLOWED = NO
+CODE_SIGN_STYLE = Automatic
+DEVELOPMENT_TEAM =
+MACKOPIA_BUNDLE_ID_PREFIX = com.example
+GENERATE_INFOPLIST_FILE = YES
+INFOPLIST_KEY_LSApplicationCategoryType = public.app-category.utilities
+SWIFT_EMIT_LOC_STRINGS = YES
+LOCALIZATION_PREFERS_STRING_CATALOGS = YES
+ARCHS = $(ARCHS_STANDARD)
+#include? "Local.xcconfig"
+
+// These targets do not yet declare App Intents. Re-enable when adding them.
+LM_SKIP_METADATA_EXTRACTION = YES

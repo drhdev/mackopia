@@ -27,11 +27,17 @@ Breaking one of these is a bug, even if tests pass.
    Never run `kopia repository upgrade`, `snapshot delete`, `maintenance --full --safety=none` or similar without an explicit user action.
 2. **The Agent owns Kopia.** Only the background agent (`Agent/`) spawns `kopia` and writes configuration. The UI app talks to it
    via XPC only. **The `App` target must never import `KopiaCLI` or `KopiaServer`.**
-3. **Isolated Kopia state.** Always pass `--config-file`, `--log-dir`, `--cache-directory` for our per-repository directories.
+3. **Isolated Kopia state.** Always pass `--config-file` and `--log-dir` for our per-repository directories.
+   Kopia 0.23.1 accepts `--cache-directory` on `repository create/connect` and `server start` (not globally): set it there, then use the stored
+   cache path in the isolated config and set `KOPIA_CACHE_DIRECTORY` on every child process.
    Never read from or write to the user's default Kopia config (`~/Library/Application Support/kopia/`) except in the explicit,
    read-only import flow.
 4. **Secrets only in the Keychain.** Never put passwords, keys or tokens in argv, `UserDefaults`, JSON config, logs, XPC events,
    crash reports, test fixtures or commit history. Pass them to child processes via environment variables.
+   WebDAV exception (approved 2026-10-23): the Agent may encode a runtime JSON configuration only in memory
+   and pass it through an explicitly inherited anonymous pipe. Never write it to a regular config/temp file.
+   Use a fresh pipe per process, a protected runtime symlink directory and a shared nonsecret maintenance lock;
+   clean up descriptors/directories and prohibit Kopia config read/modify/write commands on this transport.
 5. **No shell.** Spawn processes with an argument array; never `/bin/sh -c`, never string-interpolate paths into commands.
 6. **Identity by UUID, not by name.** Volumes are identified by volume UUID. Never back up from or to a path whose volume UUID
    does not match the stored one (empty `/Volumes/X` mount-point trap).

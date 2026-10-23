@@ -1,0 +1,49 @@
+{
+  "snapshots": [
+    {
+      "id": "1091990765b2cfbb1f93c31605dc1828",
+      "description": "",
+      "startTime": "2026-10-23T14:28:06.831241Z",
+      "endTime": "2026-10-23T14:28:06.836446Z",
+      "summary": {
+        "size": 22,
+        "files": 2,
+        "symlinks": 0,
+        "dirs": 1,
+        "maxTime": "2026-10-23T14:28:06.707412253Z",
+        "numFailed": 0
+      },
+      "rootID": "k64064ebd5e441615a4deda46c5584996",
+      "retention": [
+        "latest-2"
+      ],
+      "pins": []
+    },
+    {
+      "id": "d87ddba5f4e63cc58c8ce72b829957f4",
+      "description": "",
+      "startTime": "2026-10-23T14:28:08.051834Z",
+      "endTime": "2026-10-23T14:28:08.057571Z",
+      "summary": {
+        "size": 30,
+        "files": 2,
+        "symlinks": 0,
+        "dirs": 1,
+        "maxTime": "2026-10-23T14:28:08.049510109Z",
+        "numFailed": 0
+      },
+      "rootID": "k894b01a4f99ca3cc3dbdbd812055e67b",
+      "retention": [
+        "latest-1",
+        "hourly-1",
+        "daily-1",
+        "weekly-1",
+        "monthly-1",
+        "annual-1"
+      ],
+      "pins": []
+    }
+  ],
+  "unfilteredCount": 2,
+  "uniqueCount": 2
+}

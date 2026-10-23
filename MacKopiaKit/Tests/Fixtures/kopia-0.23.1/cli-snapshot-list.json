@@ -1,0 +1,50 @@
+[
+  {
+    "id": "8cbd2cd7d67b6e506fd5f48ef36809e2",
+    "source": {
+      "host": "test-host",
+      "userName": "test-user",
+      "path": "/fixture/source"
+    },
+    "description": "",
+    "startTime": "2026-10-23T13:29:16.001331Z",
+    "endTime": "2026-10-23T13:29:16.006158Z",
+    "stats": {
+      "totalSize": 24,
+      "excludedTotalSize": 0,
+      "fileCount": 2,
+      "cachedFiles": 0,
+      "nonCachedFiles": 2,
+      "dirCount": 1,
+      "excludedFileCount": 0,
+      "excludedDirCount": 0,
+      "ignoredErrorCount": 0,
+      "errorCount": 0
+    },
+    "rootEntry": {
+      "name": "source",
+      "type": "d",
+      "mode": "0755",
+      "mtime": "2026-10-23T13:29:15.860701581Z",
+      "uid": 501,
+      "gid": 20,
+      "obj": "k2c70d2e11f2ccb4c565fc6890daa6ea0",
+      "summ": {
+        "size": 24,
+        "files": 2,
+        "symlinks": 1,
+        "dirs": 1,
+        "maxTime": "2026-10-23T13:29:15.868032592Z",
+        "numFailed": 0
+      }
+    },
+    "retentionReason": [
+      "latest-1",
+      "hourly-1",
+      "daily-1",
+      "weekly-1",
+      "monthly-1",
+      "annual-1"
+    ]
+  }
+]

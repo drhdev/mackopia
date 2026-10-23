@@ -1,0 +1,15 @@
+{
+  "version": "0.23.1 build: 72ec08fd8edb86c67ed27099bf1b955e1f308ffa from: kopia/kopia",
+  "createdWithoutLocalConfig": true,
+  "duplicateCreationRejectedWithoutFormatChange": true,
+  "explicitPolicyAndOwnerInitialized": true,
+  "configPublicationBlocked": true,
+  "quickMaintenanceSucceeded": true,
+  "syncAndBackupRestoreSucceeded": true,
+  "configMutationRejectedWithoutDisconnect": true,
+  "forcedExitObserved": true,
+  "freshPipeReconnectAndCrashRestoreSucceeded": true,
+  "cleanEOFShutdownAfterRecovery": true,
+  "wrongBackupPasswordRejectedThenReconnectSucceeded": true,
+  "credentialsFoundInFiles": false
+}

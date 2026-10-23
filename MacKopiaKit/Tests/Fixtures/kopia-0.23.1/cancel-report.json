@@ -1,0 +1,21 @@
+{
+  "checks": {
+    "activeCounters": true,
+    "apiCancel": true,
+    "incompleteSnapshot": true,
+    "reuseAfterServerRestart": true,
+    "restoreAllBytesMatch": true,
+    "verifyAllFiles": true,
+    "stdinEOFShutdown": true,
+    "credentialsNotPersisted": true,
+    "cliCheckpoint15mAccepted": true
+  },
+  "generatedFiles": 128,
+  "generatedBytes": 268435456,
+  "cachedFilesOnResume": 34,
+  "cancelSeconds": 3.065,
+  "resumeSeconds": 5.841,
+  "serverCheckpointMinutes": 45,
+  "serverCheckpointConfigurable": false,
+  "timingNote": "No cold-run speed comparison; reuse is verified by cachedFiles and restored bytes."
+}

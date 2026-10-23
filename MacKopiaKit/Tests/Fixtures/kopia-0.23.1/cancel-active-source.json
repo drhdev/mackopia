@@ -1,0 +1,68 @@
+{
+  "source": {
+    "host": "test-host",
+    "userName": "test-user",
+    "path": "/fixture/source"
+  },
+  "status": "UPLOADING",
+  "schedule": {
+    "runMissed": true
+  },
+  "lastSnapshot": {
+    "id": "2af31a2bc4f173fd238eca08d2309f35",
+    "source": {
+      "host": "test-host",
+      "userName": "test-user",
+      "path": "/fixture/source"
+    },
+    "description": "",
+    "startTime": "2026-10-23T15:00:04.553129Z",
+    "endTime": "2026-10-23T15:00:04.557866Z",
+    "stats": {
+      "totalSize": 0,
+      "excludedTotalSize": 0,
+      "fileCount": 0,
+      "cachedFiles": 0,
+      "nonCachedFiles": 0,
+      "dirCount": 1,
+      "excludedFileCount": 0,
+      "excludedDirCount": 0,
+      "ignoredErrorCount": 0,
+      "errorCount": 0
+    },
+    "rootEntry": {
+      "name": "source",
+      "type": "d",
+      "mode": "0755",
+      "mtime": "2026-10-23T15:00:04.427887703Z",
+      "uid": 501,
+      "gid": 20,
+      "obj": "kbd721cb02300fc6c2aa9a3464a8a430c",
+      "summ": {
+        "size": 0,
+        "files": 0,
+        "symlinks": 0,
+        "dirs": 1,
+        "maxTime": "2026-10-23T15:00:04.427887703Z",
+        "numFailed": 0
+      }
+    }
+  },
+  "upload": {
+    "cachedBytes": 0,
+    "hashedBytes": 71303168,
+    "uploadedBytes": 0,
+    "estimatedBytes": 268435456,
+    "cachedFiles": 0,
+    "hashedFiles": 32,
+    "excludedFiles": 0,
+    "excludedDirs": 0,
+    "errors": 0,
+    "ignoredErrors": 0,
+    "estimatedFiles": 128,
+    "directory": ".",
+    "lastErrorPath": "",
+    "lastError": ""
+  },
+  "currentTask": "2"
+}

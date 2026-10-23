@@ -1,0 +1,32 @@
+{
+  "stream": "kopia:directory",
+  "entries": [
+    {
+      "name": "empty",
+      "type": "f",
+      "mode": "0644",
+      "mtime": "2026-10-23T14:28:06.707412253Z",
+      "uid": 501,
+      "gid": 20,
+      "obj": "b27c05d23782d85a37f5a720c3dcb802"
+    },
+    {
+      "name": "hello.txt",
+      "type": "f",
+      "mode": "0644",
+      "size": 30,
+      "mtime": "2026-10-23T14:28:08.049510109Z",
+      "uid": 501,
+      "gid": 20,
+      "obj": "41e7d25f3a66f5ba81691a1171cd8517"
+    }
+  ],
+  "summary": {
+    "size": 30,
+    "files": 2,
+    "symlinks": 0,
+    "dirs": 1,
+    "maxTime": "2026-10-23T14:28:08.049510109Z",
+    "numFailed": 0
+  }
+}

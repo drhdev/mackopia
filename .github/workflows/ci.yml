@@ -1,0 +1,45 @@
+name: CI
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  foundation:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+      - uses: actions/cache@v4
+        with:
+          path: Vendor/kopia
+          key: kopia-${{ runner.os }}-${{ hashFiles('Config/kopia-version.json') }}
+      - name: Fetch and verify pinned Kopia
+        run: ./Scripts/fetch-kopia.sh
+      - name: Archive verification tests
+        run: /usr/bin/python3 -B -m unittest discover -s Scripts/tests
+      - name: Filesystem and metadata spike
+        run: ./Scripts/spike-kopia-cli.py --output "$RUNNER_TEMP/kopia-spike"
+      - name: Server handshake and REST spike
+        run: python3 Scripts/spike-kopia-server.py --output "$RUNNER_TEMP/kopia-server-spike"
+      - name: Cancellation and durable resume spike
+        run: python3 Scripts/spike-kopia-cancel.py --output "$RUNNER_TEMP/kopia-cancel-spike"
+      - name: Backend credential isolation spike
+        run: python3 Scripts/spike-kopia-secrets.py --output "$RUNNER_TEMP/kopia-secrets-spike"
+      - name: Secret-free S3 and pipe-backed WebDAV spike
+        run: python3 Scripts/spike-kopia-secret-input.py --output "$RUNNER_TEMP/kopia-secret-input"
+      - name: Remote destination bootstrap and crash recovery spike
+        run: python3 Scripts/spike-kopia-remote-lifecycle.py --output "$RUNNER_TEMP/kopia-remote-lifecycle"
+      - name: Formatting
+        run: swift format lint --recursive --strict App Agent MacKopiaKit Tests
+      - name: Package tests
+        env:
+          MACKOPIA_REQUIRE_KOPIA_INTEGRATION: "1"
+        run: swift test --package-path MacKopiaKit
+      - name: App and embedded service build
+        run: xcodebuild -scheme MacKopia -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO build
+      - name: Bundle layout tests
+        run: xcodebuild -scheme MacKopia -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO test

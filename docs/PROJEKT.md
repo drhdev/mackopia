@@ -166,7 +166,7 @@ MacKopiaKit/
 │   ├── Secrets/           # KeychainStore (Data-Protection-Keychain, Access Group), SecretRef
 │   ├── SystemIntegration/ # VolumeMonitor (DiskArbitration/NSWorkspace), NetworkMonitor (NWPathMonitor),
 │   │                      #   PowerMonitor (IOKit), SleepAssertion, FullDiskAccessProbe, SMBMounter (NetFS), Notifications
-│   ├── AgentProtocol/     # XPC-Protokoll: Requests/Responses/Events als Codable, Versionierung
+│   ├── AgentProtocol/     # XPC-Protokoll/Transport, Versionierung, appseitige SMAppService-Grenze
 │   └── TestSupport/       # FakeKopia-Binary-Builder, temporäre Repos, Fixtures (nur Test-Targets)
 └── Tests/
     ├── KopiaCLITests/ KopiaServerTests/ BackupDomainTests/ BackupEngineTests/ PersistenceTests/
@@ -203,7 +203,7 @@ mackopia/
 │   ├── AgentApp.swift                   # @main, MenuBarExtra, startet Engine + XPC-Listener
 │   ├── XPCServer/                       # Listener, Peer-Prüfung, Request-Routing
 │   ├── MenuBar/
-│   ├── LaunchAgent/com.example.MacKopia.Agent.plist
+│   ├── LaunchAgent/Agent.plist            # Build-Template; Name/Identitäten aus App-Bundle-ID
 │   └── Agent.entitlements
 ├── Scripts/
 │   ├── fetch-kopia.sh                   # lädt gepinnte Kopia-Version, prüft SHA256, erzeugt Universal Binary (lipo)
@@ -238,7 +238,8 @@ MacKopia.app/Contents/
   „Kopia-Version unerwartet“ (bei eigenem Pfad nur Warnung).
 - `Scripts/fetch-kopia.sh` (Build-Phase, gecacht): lädt die offiziellen Release-Archive für `darwin-arm64` und `darwin-x64`
   von GitHub, **verifiziert SHA256 gegen die gepinnten Werte**, erzeugt mit `lipo -create` ein Universal Binary
-  und signiert mit `codesign --options runtime --timestamp`. Ohne passenden Hash bricht der Build ab.
+  und signiert bei explizit aktivierter Signierung mit `codesign --options runtime --timestamp`. Lokale Entwicklung
+  derzeit mit `CODE_SIGNING_ALLOWED=NO`, ohne explizite Codesign-Aufrufe. Ohne passenden Hash bricht der Build ab.
 - Kopia-Updates sind ein bewusster Vorgang: Version in `kopia-version.json` anheben → Integrationstests → Release.
 - **Niemals** automatisch `kopia repository upgrade` ausführen. Ein Formatupgrade verlangt eine ausdrückliche Bestätigung des Nutzers mit Warnhinweis.
 
@@ -250,12 +251,19 @@ Pflichtanforderungen:
    `KOPIA_CHECK_FOR_UPDATES=false`, `KOPIA_PASSWORD` (nur wenn nötig), `KOPIA_LOG_DIR`, `KOPIA_CACHE_DIRECTORY`.
    Englische Locale erzwingen, weil Fehler-Mapping auf englischen Meldungen basiert.
 3. **Passwörter nie in argv** (für alle Nutzer per `ps` sichtbar). Repository-Passwort über `KOPIA_PASSWORD` in der Umgebung des
-   Kindprozesses. Cloud-Secrets (S3-Keys, SFTP-Passwort) ebenfalls über Umgebungsvariablen (`AWS_ACCESS_KEY_ID`,
-   `AWS_SECRET_ACCESS_KEY`, `KOPIA_SFTP_PASSWORD` o. ä. – pro Backend im Spike verifizieren) oder, falls nicht unterstützt,
-   über temporäre Dateien mit Modus `0600` in einem `0700`-Verzeichnis, die sofort nach Gebrauch gelöscht werden.
+   Kindprozesses. S3-Secrets über AWS-Umgebungsvariablen bei vollständig fehlenden Credential-Feldern in der
+   Konfiguration. WebDAV: Credentials aus dem Schlüsselbund ausschließlich in eine im Speicher erzeugte
+   JSON-Laufzeitkonfiguration einsetzen und über eine explizit vererbte anonyme Pipe übergeben. Frische Pipe pro
+   Prozess, geschütztes 0500-Symlink-Verzeichnis und gemeinsame nicht geheime 0600-Wartungssperre; Deskriptoren
+   und Laufzeitverzeichnis aufräumen. stdin bleibt für Shutdown frei. Keine secret-haltige reguläre Config-/Temp-Datei.
+   Kopia-Konfigurations-Schreiboperationen sind bei diesem Transport ausgeschlossen; Änderungen verwaltet der Agent
+   und übernimmt sie beim nächsten Prozessstart. SFTP-Zuführung noch offen (`KOPIA_SFTP_PASSWORD` nicht unterstützt).
 4. **stdout und stderr gleichzeitig lesen** (zwei Tasks, `FileHandle.bytes` bzw. `AsyncSequence`). Sonst Deadlock bei vollem
    64-KB-Pipe-Puffer. stdout für JSON, stderr zeilenweise für Logs und den Server-Handshake.
-5. **Immer `--config-file`, `--log-dir`, `--cache-directory`, `--no-progress`** (wo unterstützt). Bei JSON-fähigen Kommandos `--json`.
+5. **Immer `--config-file`, `--log-dir`, `--no-progress`** (wo unterstützt). Kopia 0.23.1 akzeptiert
+   `--cache-directory` bei `repository create/connect` und `server start`, aber nicht global: dort explizit setzen. Danach den gespeicherten Cache-Pfad
+   aus der isolierten Config verwenden und bei jedem Kindprozess `KOPIA_CACHE_DIRECTORY` setzen.
+   Bei JSON-fähigen Kommandos `--json`.
 6. **Timeouts** pro Kommando (z. B. connect 60 s, list 120 s, maintenance unbegrenzt mit Heartbeat). Überschreitung → Abbruch.
 7. **Abbruch-Eskalation**: Swift-Task-Cancellation → `SIGINT` → 10 s → `SIGTERM` → 10 s → `SIGKILL`. Danach Zustand protokollieren.
 8. **Kindprozess-Hygiene**: eigene Prozessgruppe; PID-Datei pro Repository-Server; beim Agent-Start verwaiste
@@ -296,17 +304,18 @@ Startkommando (Agent, pro Repository):
 ```
 kopia server start
   --config-file=<repoDir>/repository.config
-  --log-dir=… --cache-directory=…
+  --log-dir=… --cache-directory=…           # Flag hier im server-start-Kontext zulässig
   --address=127.0.0.1:0                      # zufälliger freier Port, nur Loopback
   --tls-generate-cert                        # Ad-hoc-Zertifikat; Fingerprint wird gepinnt
   --tls-generate-rsa-key-size=2048
+  --tls-print-server-cert                    # Base64-PEM zum Aufbau des gepinnten TLS-Vertrauens
   --random-password                          # Basic-Auth-Passwort, nur im Speicher
   --random-server-control-password
   --server-username=mackopia
   --shutdown-on-stdin                        # Server beendet sich, wenn der Agent stirbt (stdin-EOF)
-  --no-ui --no-grpc --control-api
+  --ui --no-grpc --control-api               # REST-UI-API benötigt --ui; kein Browser wird geöffnet
   --no-check-for-updates
-  --async-repo-connect=false                 # (Spike: Verhalten prüfen)
+  --no-async-repo-connect                    # Bool-Parser akzeptiert nicht --async-repo-connect=false
 ```
 Mit `KOPIA_PASSWORD` in der Umgebung. Die Flags `--tls-generate-cert`, `--random-password`, `--random-server-control-password`,
 `--shutdown-on-stdin` und `--tls-print-server-cert` sind in 0.23.1 versteckt, aber vorhanden (KopiaUI nutzt sie).
@@ -314,6 +323,7 @@ Mit `KOPIA_PASSWORD` in der Umgebung. Die Flags `--tls-generate-cert`, `--random
 **Handshake**: stderr zeilenweise lesen und diese Präfixe parsen (exakt im Spike verifizieren):
 - `SERVER ADDRESS: https://127.0.0.1:<port>`
 - `SERVER CERT SHA256: <hex>`
+- `SERVER CERTIFICATE: <base64-kodiertes PEM>` (nur mit `--tls-print-server-cert`)
 - `SERVER PASSWORD: <pw>`
 - `SERVER CONTROL PASSWORD: <pw>`
 - `NOTIFICATION: …` (Kopia-interne Benachrichtigungen, ins Log)
@@ -325,7 +335,12 @@ Timeout für den Handshake: 30 s, danach Prozess beenden → `KopiaError.serverS
 - `URLSession` mit eigenem Delegate: Bei `NSURLAuthenticationMethodServerTrust` nur akzeptieren, wenn der
   **SHA256 des Leaf-Zertifikats** exakt dem gepinnten Fingerprint entspricht. Sonst ablehnen. Keine globale TLS-Lockerung, keine ATS-Ausnahmen.
 - Basic-Auth-Header für die API (`mackopia:<password>`), Control-API mit `server-control:<controlPassword>`.
-- Ephemere Session (`URLSessionConfiguration.ephemeral`), kein Cookie-/Cache-Speicher.
+- Ephemere Session (`URLSessionConfiguration.ephemeral`), kein persistenter Cookie-/Cache-Speicher.
+- **CSRF bleibt aktiv:** nach Prüfung des Zertifikat-Pins authentifiziert `GET /` aufrufen. Aus der Antwort ausschließlich
+  `Kopia-Session-Cookie` und das Meta-Feld `kopia-csrf-token` im Arbeitsspeicher halten; UI-API-Anfragen senden Cookie
+  und `X-Kopia-Csrf-Token`. Kopia 0.23.1 verlangt das Paar auch bei GET. Control-API nutzt separate Basic-Auth ohne CSRF.
+- `--ui` aktiviert neben den HTML-Dateien auch die REST-UI-API; `--no-ui` liefert für die benötigten UI-API-Routen 404.
+  Es wird kein Webbrowser geöffnet, und der Server bleibt ausschließlich über Loopback/TLS/Zufallszugangsdaten erreichbar.
 - Alle DTOs **tolerant dekodieren** (Optionals, unbekannte Felder ignorieren). Die Kopia-API ist nicht offiziell versioniert.
   Contract-Tests gegen die gepinnte Version fangen Brüche ab.
 
@@ -340,11 +355,11 @@ Timeout für den Handshake: 30 s, danach Prozess beenden → `KopiaError.serverS
 | `GET /api/v1/snapshots?userName=&host=&path=` | Snapshots einer Quelle |
 | `POST /api/v1/snapshots/delete`, `/edit` | Löschen (mit Bestätigung), Beschreibung/Pin bearbeiten |
 | `GET /api/v1/objects/{oid}` | Verzeichnisinhalt (JSON) bzw. Dateiinhalt (Quick Look, Einzeldatei-Download) |
-| `POST /api/v1/restore` | Restore als Task |
+| `POST /api/v1/restore` | Restore als Task; `options.restoreDirEntryAtDepth = 2147483647` für vollständigen Restore (sonst Platzhalter), alle `fsOutput.overwrite*` explizit aus |
 | `GET /api/v1/tasks`, `/tasks/{id}`, `/tasks/{id}/logs`, `POST /tasks/{id}/cancel` | Restore-/Wartungs-Tasks, Fortschritt, Abbruch |
-| `GET/PUT /api/v1/policy`, `GET /api/v1/policy/resolve` | Policies lesen/schreiben, effektive Policy anzeigen |
+| `GET/PUT /api/v1/policy`, `POST /api/v1/policy/resolve` | Policies lesen/schreiben, effektive Policy anzeigen |
 | `POST /api/v1/estimate` | Größe/Dateianzahl vor dem ersten Backup schätzen (Fortschritts-Prozent) |
-| `POST /api/v1/repo/throttle` | Bandbreitenlimit zur Laufzeit (Option „Netzwerk schonen“) |
+| `PUT /api/v1/repo/throttle` | Bandbreitenlimit zur Laufzeit (Option „Netzwerk schonen“) |
 | `POST /api/v1/control/shutdown` | Server sauber beenden (zusätzlich zu stdin-Schließen) |
 
 **Scheduling in Kopia deaktivieren**: MacKopia ist die einzige Instanz, die Zeitpläne steuert. Kopia-Policies bekommen
@@ -356,7 +371,10 @@ Wechseldatenträgern nur kurz laufen.
 
 - Polling von `GET /api/v1/sources` alle 1 s während eines Laufs (nur aktive Quelle), Werte in `BackupProgress` mappen:
   `hashedBytes/Files`, `cachedBytes/Files` (unverändert), `uploadedBytes`, `estimatedBytes/Files`, `directory` (aktueller Ordner),
-  `errors/ignoredErrors`. Exakte Feldnamen aus Fixtures.
+  `errors/ignoredErrors`. Exakte Feldnamen aus Fixtures. `uploadedBytes` kann während aktiver Verarbeitung noch 0 sein;
+  diesen Zähler nicht als Voraussetzung für Abbruch oder Aktivitätsstatus verwenden.
+  In abgeschlossenen Manifesten zählt `stats.fileCount` in 0.23.1 die verarbeiteten Dateien ohne `cachedFiles`;
+  die vollständige Dateizahl steht in `rootEntry.summ.files`.
 - **Prozent** = (hashed + cached) / estimated. Wenn `estimated` fehlt: unbestimmter Fortschritt + Byte-Zähler.
   Vor dem ersten Lauf optional `/api/v1/estimate`.
 - **Durchsatz/Restzeit**: gleitender Mittelwert (EWMA, α = 0.2) über die letzten 30 s; Restzeit erst nach 15 s anzeigen.
@@ -372,8 +390,13 @@ Wechseldatenträgern nur kurz laufen.
 | **Stoppen** | Laufenden Snapshot abbrechen (wie Pause), aber **keine** automatische Wiederaufnahme. Nächster regulärer Trigger gilt wieder. Restliche Quellen des Plans in diesem Lauf werden übersprungen. |
 | **Abbruch hängt** | Nach 30 s ohne Statuswechsel: Server-Prozess beenden (Eskalation 6.2/7), Lauf als `cancelled` mit Hinweis protokollieren. Kein Repo-Schaden möglich. |
 
-Zusätzlich setzen wir das Kopia-Policy-Feld für Checkpoints (`--checkpoint-interval`, Kopia-Standard 45 Min.) auf 15 Min.
-(Spike: Flagname und Grenzen verifizieren), damit Abbrüche weniger Arbeit kosten.
+Checkpoint-Ziel bleibt 15 Min.; Kopia 0.23.1 bietet dafür jedoch **kein Policy-Feld und keine Server-Option**.
+Das versteckte CLI-Flag `snapshot create --checkpoint-interval=15m` wird akzeptiert (Obergrenze laut Quellcode 45 Min.).
+Der unveränderte Server verwendet den Standard von 45 Min.; die 15-Minuten-Vorgabe ist im Serverbetrieb noch offen.
+Ein sauberer API-Abbruch speichert unabhängig davon einen unvollständigen Snapshot mit `incomplete: "canceled"`.
+Spike B prüft dessen Wiederverwendung nach einem Server-Neustart und einen vollständigen, bytegleichen Restore.
+Der Abbruch kann bis zum Abschluss ausstehender Schreibvorgänge dauern; `sources/cancel` bestätigt nur die Anforderung,
+nicht den bereits abgeschlossenen Abbruch. Erst Quellstatus `IDLE` und gespeicherten Snapshot auswerten.
 
 ---
 
@@ -520,6 +543,7 @@ Jede Meldung hat eine **konkrete Aktion** („Laufwerk anschließen“, „Passw
 2. **Keine Secrets** in: UserDefaults, config.json, Logs, Crash-Reports, argv, Diagnose-Export, XPC-Events. Die UI sendet ein
    Secret genau einmal per XPC an den Agent (beim Setzen) und bekommt es nie zurück. Ausnahme: „Passwort anzeigen“ im
    Wiederherstellungs-Kit, nur nach lokaler Authentifizierung (`LAContext`, `.deviceOwnerAuthentication`).
+   WebDAV-Laufzeit-JSON ausschließlich im Speicher über die anonyme Pipe aus §6.2 ist erlaubt; keine Persistenz.
 3. **Passwort-UX**: Zwei Felder (Eingabe + Bestätigung) beim Anlegen, `.textContentType(.newPassword)` (macOS schlägt starke
    Passwörter vor), Einfügen aus Enpass per ⌘V, Stärkeanzeige (zxcvbn-ähnliche Heuristik, Minimum: 12 Zeichen oder Stärke ≥ 3),
    „Passwort generieren“ (Diceware/random, 24+ Zeichen). Beim Verbinden `.textContentType(.password)`.
@@ -575,8 +599,9 @@ Vor **jedem** Lauf, in dieser Reihenfolge. Jede Prüfung liefert `ok | warning |
 - **Geöffnete Datenbanken** (Mail, Messages, Datenbanken von Entwicklertools) können inkonsistent sein → APFS-Snapshots Phase 2;
   in 1.0 dokumentieren.
 - **Dateinamen mit Unicode-Normalisierung (NFD/NFC)** und sehr lange Pfade: Restore-Tests mit solchen Fixtures.
-- **Erweiterte Attribute, Ressourcen-Forks, ACLs, Finder-Tags**: Kopias Unterstützung im Spike prüfen und in der Hilfe ehrlich
-  dokumentieren. Wenn xattrs fehlen, Finder-Tags/Kommentare als bekannte Einschränkung nennen.
+- **Erweiterte Attribute, Ressourcen-Forks, ACLs, Finder-Tags**: Der erste Spike mit Kopia 0.23.1 stellt diese Metadaten
+  im CLI-Standardworkflow nicht wieder her (siehe §17 und `metadata-report.json`). In der Hilfe und im Restore-UI als bekannte
+  Einschränkung nennen; keine vollständige macOS-Metadatenwiederherstellung zusagen.
 - **Mehrere Benutzer auf demselben Mac / dasselbe Repo von zwei Macs**: durch die Identität `user@host` getrennt. Snapshots
   anderer Rechner im Restore-Browser anzeigen (Filter), aber standardmäßig nicht anfassen.
 - **Uhrzeit-Sprünge / Zeitzonen**: Zeitpläne in lokaler Zeit über `Calendar`, gespeicherte Zeitpunkte immer als UTC-`Date`.
@@ -690,6 +715,12 @@ Byte-/Datumsformatierung ausschließlich mit `ByteCountFormatStyle`, `Date.Forma
   `healthChanged`, `taskProgress`. Die UI hält ein `AppState`-Snapshot + wendet Events an. Beim Reconnect lädt sie `getState` neu.
 - UI-Stores (`@Observable @MainActor`): `AgentConnection`, `OverviewStore`, `PlansStore`, `RepositoriesStore`, `RestoreStore`,
   `ActivityStore`. Views bekommen Stores über `@Environment`. Keine Geschäftslogik in Views.
+- Phase-0-Ping: `AgentPingRequest` mit fester Protokollversion (aktuell 1) und UUID zur Antwortzuordnung;
+  unpassende Version/UUID wird abgewiesen. `AgentPingClient` hat eine 5-s-Antwortfrist und Task-Cancellation,
+  `AgentPingServer` akzeptiert nur die exakte App-Signaturidentität desselben Teams. Beide prüfen zusätzlich
+  die eigene gültige Team-Signatur; ad-hoc/unsignierte Builds erhalten keinen ungesicherten Ersatztransport.
+  `AgentServiceRegistration` kapselt explizite Registrierung, Status und den Sprung zu Anmeldeobjekt-Einstellungen.
+  Der Agent startet den Listener beim App-Start. UI-Anbindung sowie echter signierter Ende-zu-Ende-Ping sind noch offen.
 - Ist der Agent nicht erreichbar: UI zeigt Banner „Hintergrunddienst nicht aktiv“ + Button (Registrierung/Neustart über `SMAppService`).
 
 ---
@@ -742,6 +773,7 @@ Konfiguration `.swift-format` im Repo) als Pflicht-Check.
 5. **Spike C – TCC/FDA**: Agent via `SMAppService` registrieren, `kopia` als Kind starten, geschützten Ordner sichern.
    Ergebnis: Welcher Eintrag muss in „Festplattenvollzugriff“? Onboarding-Text festlegen.
 6. **Spike D – Secrets via Umgebung**: Für jedes Backend (filesystem, sftp, webdav, s3) verifizieren, wie Secrets ohne argv übergeben werden.
+   Ergebnis: [Spike-D-Bericht](SPIKE-D-SECRETS.md). S3/WebDAV persistieren Backend-Secrets trotz Environment-Übergabe; SFTP hat kein Passwort-Environment-Binding. Folge-Spike: S3 ohne Credential-Felder mit Environment, WebDAV via anonymer Config-Pipe (Backup/Restore + EOF-Shutdown) erfolgreich. WebDAV-`--create-only`, Aufbewahrung/Owner, schnelle Wartung und Wiederverbindung/Restore nach Prozessabsturz inzwischen geprüft; geschützter Symlink-/Lock-Pfad nötig. WebDAV-Pipe-Übergabe für Produktion freigegeben (§6.2/§8); Swift-Integration, S3-Bootstrap und SFTP bleiben offen.
 7. **Spike E – Metadaten**: xattrs/Finder-Tags/ACLs/Ressourcen-Forks nach Restore prüfen.
 **Abnahme:** Leere App + Agent starten, Agent erscheint in der Menüleiste, XPC-Ping UI→Agent funktioniert (Peer-Requirement aktiv),
 Spike-Ergebnisse im Entscheidungslog dokumentiert, Fixtures eingecheckt.
@@ -808,7 +840,7 @@ Fehler-Mapping gehört in **eine** Datei mit Tests pro Zeile.
 ## 16. Offene Punkte (vor Phase 0 klären)
 
 1. Endgültiger App-Name (Markenprüfung; „Kopia“ im Namen ggf. mit dem Kopia-Projekt abstimmen) und Bundle-ID-Präfix.
-2. Apple Developer Team-ID und Hosting für Appcast/DMG (z. B. GitHub Releases).
+2. **Für spätere Releases zurückgestellt:** Apple Developer Team-ID, Developer-ID-Signierung und Notarisierung; der Nutzer hat derzeit keine Developer ID. Keine Voraussetzung für die laufende signierungsunabhängige Entwicklung. Hosting für Appcast/DMG (z. B. GitHub Releases) später festlegen.
 3. Lizenzmodell der App (Open Source? Bezahl-App? Beeinflusst Sparkle-Feed und Website, nicht die Architektur).
 
 ---
@@ -828,6 +860,26 @@ Fehler-Mapping gehört in **eine** Datei mit Tests pro Zeile.
 | 2026-10-23 | Pause = Abbruch mit Checkpoint, Fortsetzen = neuer Lauf | Kopia kennt kein echtes Pausieren; Dedup macht Neustart billig |
 | 2026-10-23 | Zeitpläne nur in MacKopia, keine Kopia-Scheduling-Policies | Eine einzige Wahrheit, Trigger mit Bedingungen |
 | 2026-10-23 | APFS-Snapshots, Hooks, Finder-Mount → Phase 2 | Privilegierter Helper nötig bzw. nicht kritisch für 1.0 |
+| 2026-10-23 | Phase-0-Gerüst vorerst mit `MacKopia`, `com.example.MacKopia` und leerer Team-ID; lokale Builds ad-hoc signiert | Vom Nutzer bestätigt; finale Identität und Developer-ID-Signierung bleiben offen |
+| 2026-10-23 | Zunächst leere Package-Module, App und eingebetteter Agent ohne Registrierung, XPC oder Kopia; keine zusätzlichen Entitlements | Kleiner, separat prüfbarer erster Schritt von Phase 0; noch kein abgeschlossener Phasenstand |
+| 2026-10-23 | Phase-0-Build prüft beide Architektur-Archive gegen festgeschriebene SHA256-Werte, erzeugt Universal-Kopia und signiert den eingebetteten Helper mit der App-Identität | Umsetzung von §6.1; Hashes mit offiziellen Release-Metadaten und `checksums.txt` abgeglichen; lokal ad-hoc, bei Developer-ID mit Timestamp |
+| 2026-10-23 | Kopia-0.23.1-Lizenzbeilage: unveränderte `LICENSE` und `README.md` aus beiden verifizierten Archiven unter `Resources/Kopia` | Die offiziellen macOS-Archive enthalten keine `NOTICE`; keine erfundene Upstream-Datei beilegen. Darstellung im Über-Fenster folgt später |
+| 2026-10-23 | Cache-Pfad bei `repository create/connect` und `server start` per `--cache-directory` setzen; weitere Aufrufe mit isolierter Config und `KOPIA_CACHE_DIRECTORY` | Kopia 0.23.1 lehnt das Flag global ab; `server start` verwendet denselben Connect-Flagblock. Präzisierung vom Nutzer bestätigt; Isolation bleibt unverändert |
+| 2026-10-23 | Kopia 0.23.1 speichert den Cache-Pfad nach Möglichkeit relativ zur Config-Datei | Isolationsprüfung muss den gespeicherten Pfad gegen das Config-Verzeichnis auflösen; Probe auch mit abweichendem Arbeitsverzeichnis erfolgreich |
+| 2026-10-23 | Spike E (CLI-Standardworkflow): Inhalte, Symlinks, POSIX-Modus und mtime erhalten; xattrs, Finder-Tags, ACLs und Ressourcen-Forks fehlen nach Restore | Reproduzierbar mit `Scripts/spike-kopia-cli.py`; Quellmetadaten vor Snapshot geprüft. Einschränkung in späterer Hilfe/Restore-UI offenlegen; noch keine vollständige macOS-Metadatenzusage |
+| 2026-10-23 | Server mit `--ui`, `--tls-print-server-cert` und `--no-async-repo-connect` starten; CSRF-Sitzung nur flüchtig über `GET /` aufbauen | Spike A: `--no-ui` deaktiviert die REST-UI-API; Basic Auth allein liefert ohne CSRF auch bei GET 401. TLS 1.3, Leaf-Pinning, getrennte Control-Zugangsdaten und stdin-EOF-Shutdown gegen echtes Kopia geprüft |
+| 2026-10-23 | Vollständiger REST-Restore mit `restoreDirEntryAtDepth = 2147483647`; neuesten Snapshot explizit nach Startzeit wählen | Spike A: REST-Tiefe 0 erzeugt Platzhalter; die Snapshot-API liefert nicht automatisch den neuesten Eintrag zuerst. Restore mit expliziten sicheren Optionen bytegleich geprüft |
+| 2026-10-23 | REST-Methoden korrigiert: `POST /policy/resolve`, `PUT /repo/throttle` | Routen im Quellcode des Tags v0.23.1 geprüft; `PUT /repo/throttle` in Spike B geprüft; `POST /policy/resolve` noch nicht live geprüft |
+| 2026-10-23 | Spike B: API-Abbruch erzeugt `incomplete: "canceled"`; Wiederverwendung nach Server-Neustart und vollständiger Restore von 128 Dateien / 256 MiB geprüft | Aktive Zähler können `uploadedBytes = 0` zeigen. Abbruch wartet auf Flush; Antwort ist nur Anforderungsbestätigung. Laufzeiten sind Beobachtungen, keine Garantien |
+| 2026-10-23 | Checkpoint-Vorgabe 15 Min. im Serverbetrieb weiterhin offen; kein entsprechendes Policy-Feld/Server-Flag in Kopia 0.23.1 | Pinned Quellcode: CLI-only `--checkpoint-interval`, dort 15m akzeptiert, maximal 45m; Server nutzt unveränderten 45-Minuten-Standard. Kein Wechsel der Backup-Architektur ohne weitere Entscheidung |
+| 2026-10-23 | Phase-0-XPC-Fundament mit Swift-XPC, gleicher Team-ID und exakter Signaturidentität in beiden Richtungen; kein Ad-hoc-Fallback | Eigene Signatur zusätzlich prüfen; versionierter Ping, UUID-Abgleich, Deadline/Cancellation. LaunchAgent aus Bundle-ID erzeugt, keine neuen Entitlements/Build-Phasen |
+| 2026-10-23 | Echte Entwicklungssignierung und damit positiver XPC-/SMAppService-/TCC-Test werden vorerst verschoben | Nutzer bestätigt: Signierung später einrichten, unabhängig prüfbare Teile fortsetzen. Lokal keine gültige Codesigning-Identität; Tests verwenden nur Fakes bzw. absichtlich ungültige Identität |
+| 2026-10-23 | Apple-Entwicklungssignierung, Developer-ID-Signierung und Notarisierung ausdrücklich erst für spätere Releases; keine Einrichtung während der laufenden Entwicklung | Nutzer hat keine Developer ID. Signaturabhängige Live-Tests zurückstellen, unabhängige Entwicklung fortsetzen; lokale technische Ad-hoc-Builds benötigen kein Apple-Konto und ersetzen keine Team-Signatur |
+| 2026-10-23 | Spike D: Environment-Übergabe verhindert bei Kopia 0.23.1 nicht das Persistieren von S3-/WebDAV-Secrets; `KOPIA_SFTP_PASSWORD` nicht unterstützt | Mit temporärem Loopback-Test reproduziert; Bericht `SPIKE-D-SECRETS.md`, Fixture `secrets-report.json`. Sicherheitsinvariante bleibt bestehen; sichere Zuführung vor Remote-Produktionsintegration noch zu lösen |
+| 2026-10-23 | Folge-Spike D: S3 öffnet ohne Credential-Felder über AWS-Environment; WebDAV öffnet via anonymer Config-Pipe und erstellt/restauriert Backups | CLI/TLS-Server, falsche S3-Secrets/Tokens und EOF-Shutdown geprüft. Kein Secret-Persistieren in diesen Abläufen; neuer Remote-Bootstrap, Wiederverbindung und Swift-Integration bleiben offen. Keine Ausnahme der Sicherheitsinvarianten |
+| 2026-10-23 | WebDAV-Spike: `--create-only` ohne lokale Secret-Datei; Policy/Owner explizit setzen; Pipe über schreibgeschützten Symlink-Pfad mit gemeinsamer Wartungssperre | Anlegen, schnelle Wartung, Backup/Restore und Crash-Neustart geprüft. Reiner `/dev/fd`-Pfad scheitert bei `.mlock`; fehlende Cache-Kapazitäten können Kopia-Panic auslösen. Produktionsübernahme der Pipe-Übergabe als Präzisierung von AGENTS.md §2.4 noch nicht beschlossen |
+| 2026-10-23 | WebDAV-Laufzeitkonfiguration über explizit vererbte anonyme Pipe freigegeben | Nutzerbestätigung: Secrets dauerhaft nur im Schlüsselbund, JSON nur im Speicher; frische Pipe, geschützter Symlink-Pfad, gemeinsame Wartungssperre und Cleanup verbindlich. Keine reguläre Secret-Datei und keine Kopia-Konfigurations-Schreiboperationen; AGENTS.md §2.4 und §6.2/§8 präzisiert |
+| 2026-10-23 | Lokale Builds führen vorerst keine expliziten Signierschritte aus (`CODE_SIGNING_ALLOWED=NO`) | Nutzer stellt Signierung bis spätere Releases zurück; Fetch-/Embed-Skripte respektieren dies ebenfalls. Hardened-Runtime-Konfiguration und XPC-Signaturprüfung bleiben bestehen; vor Releases explizit aktivieren |
 | … | *(Spike-Ergebnisse aus Phase 0 hier eintragen)* | |
 
 ---

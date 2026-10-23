@@ -1,0 +1,15 @@
+{
+  "checks": {
+    "loopbackTLS": true,
+    "peerPinMismatchRejectedBeforeHTTP": true,
+    "missingAuthRejected": true,
+    "missingCSRFRejected": true,
+    "ephemeralCSRFSession": true,
+    "noUIDisablesUIAPI": true,
+    "serverSnapshot": true,
+    "estimateTask": true,
+    "restoreBytesMatch": true,
+    "stdinEOFShutdown": true,
+    "credentialsNotPersisted": true
+  }
+}

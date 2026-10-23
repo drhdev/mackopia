@@ -1,0 +1,7 @@
+{
+  "sources": {
+    "test-user@test-host:/fixture/source": {
+      "success": true
+    }
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "root": "k894b01a4f99ca3cc3dbdbd812055e67b",
+  "fsOutput": {
+    "targetPath": "/fixture/restored",
+    "overwriteFiles": false,
+    "overwriteDirectories": false,
+    "overwriteSymlinks": false,
+    "writeFilesAtomically": true
+  },
+  "options": {
+    "restoreDirEntryAtDepth": 2147483647,
+    "deleteExtra": false,
+    "ignoreErrors": false
+  }
+}

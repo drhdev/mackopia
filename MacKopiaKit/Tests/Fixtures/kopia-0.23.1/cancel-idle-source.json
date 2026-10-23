@@ -1,0 +1,53 @@
+{
+  "source": {
+    "host": "test-host",
+    "userName": "test-user",
+    "path": "/fixture/source"
+  },
+  "status": "IDLE",
+  "schedule": {
+    "runMissed": true
+  },
+  "lastSnapshot": {
+    "id": "acf8059acc607715102b1a0a95500c43",
+    "source": {
+      "host": "test-host",
+      "userName": "test-user",
+      "path": "/fixture/source"
+    },
+    "description": "",
+    "startTime": "2026-10-23T15:00:06.527869Z",
+    "endTime": "2026-10-23T15:00:10.3036Z",
+    "stats": {
+      "totalSize": 71303168,
+      "excludedTotalSize": 0,
+      "fileCount": 34,
+      "cachedFiles": 0,
+      "nonCachedFiles": 34,
+      "dirCount": 1,
+      "excludedFileCount": 0,
+      "excludedDirCount": 0,
+      "ignoredErrorCount": 0,
+      "errorCount": 0
+    },
+    "incomplete": "canceled",
+    "rootEntry": {
+      "name": "source",
+      "type": "d",
+      "mode": "0755",
+      "mtime": "2026-10-23T15:00:05.895527833Z",
+      "uid": 501,
+      "gid": 20,
+      "obj": "k03074156e5bb342d4b0324e051ce9942",
+      "summ": {
+        "size": 71303168,
+        "files": 34,
+        "symlinks": 0,
+        "dirs": 1,
+        "maxTime": "2026-10-23T15:00:05.858296955Z",
+        "incomplete": "canceled",
+        "numFailed": 0
+      }
+    }
+  }
+}

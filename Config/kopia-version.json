@@ -1,0 +1,8 @@
+{
+  "version": "0.23.1",
+  "releaseURL": "https://github.com/kopia/kopia/releases/tag/v0.23.1",
+  "sha256": {
+    "arm64": "19e6ed637221f4dfd46a46e978ec4c509c386b522d746db2cd6762b217478111",
+    "amd64": "89dd7160a1266413c73bd0aa92459c5e739fcaed2ba30a4cca30aef179f11042"
+  }
+}
