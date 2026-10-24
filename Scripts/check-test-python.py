@@ -26,13 +26,20 @@ server.server_close()
     ]:
         environment.update(FIXTURE_USER="startup-check", FIXTURE_PASSWORD="startup-check")
         child = subprocess.Popen(
-            [sys.executable, str(Path(__file__).with_name(name)), *arguments],
+            [sys.executable, "-c",
+             "import faulthandler,runpy,sys; faulthandler.dump_traceback_later(10); "
+             "sys.argv=sys.argv[1:]; runpy.run_path(sys.argv[0],run_name='__main__')",
+             str(Path(__file__).with_name(name)), *arguments],
             env=environment, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         try:
             output, diagnostics = child.communicate(input=b"", timeout=30)
             if child.returncode != 0 or not output:
                 raise RuntimeError(f"{name}: isolated startup failed (exit {child.returncode})")
             print(f"{name}: isolated startup passed", flush=True)
+        except subprocess.TimeoutExpired as error:
+            # faulthandler emits stack locations only, never frame locals or credentials.
+            print((error.stderr or b"").decode(errors="replace"), file=sys.stderr)
+            raise
         finally:
             if child.poll() is None:
                 child.kill()
