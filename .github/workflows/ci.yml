@@ -14,6 +14,7 @@ jobs:
           xcodebuild -version
           swift --version
           python3 -c "import ssl; assert ssl.HAS_TLSv1_3, 'TLS 1.3 Python runtime required for network tests'"
+          echo "MACKOPIA_TEST_PYTHON=$(python3 -c 'import sys; print(sys.executable)')" >> "$GITHUB_ENV"
       - uses: actions/cache@v4
         with:
           path: Vendor/kopia
@@ -39,7 +40,9 @@ jobs:
       - name: Package tests
         env:
           MACKOPIA_REQUIRE_KOPIA_INTEGRATION: "1"
-        run: swift test --package-path MacKopiaKit
+        # Each adversarial network case launches TLS servers and generates a fresh RSA key.
+        # Bound process pressure on hosted runners while retaining concurrency within each test.
+        run: swift test --package-path MacKopiaKit --no-parallel
       - name: App and embedded service build
         run: xcodebuild -scheme MacKopia -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO build
       - name: Bundle layout tests

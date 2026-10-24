@@ -137,7 +137,7 @@ struct KopiaConfigurationPipeTests {
         #expect(posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, "/dev/null", O_RDONLY, 0) == 0)
         // No shell, no secrets in argv/environment, stdin remains an independent descriptor.
         let arguments = [
-            "/usr/bin/python3", "-c",
+            TestPythonRuntime.executable.path, "-c",
             "import pathlib,sys; assert pathlib.Path(sys.argv[1]).read_bytes() == bytes([123,125]); assert sys.stdin.buffer.read() == bytes()",
             transport.configurationURL.path,
         ]

@@ -234,7 +234,7 @@ struct KopiaProcessIntegrationTests {
         let password = UUID().uuidString
         let user = UUID().uuidString
         let fixture = Process()
-        fixture.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
+        fixture.executableURL = TestPythonRuntime.executable
         fixture.arguments = [
             NativeKopiaFixture.root.appendingPathComponent("Scripts/native_webdav_fixture.py").path,
             root.appendingPathComponent("storage").path,

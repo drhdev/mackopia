@@ -15,7 +15,7 @@ struct KopiaProcessTests {
 
     func request(_ root: URL, script: String, arguments: [String] = []) -> KopiaProcessRequest {
         KopiaProcessRequest(
-            executable: URL(fileURLWithPath: "/usr/bin/python3"), arguments: ["-c", script] + arguments,
+            executable: TestPythonRuntime.executable, arguments: ["-c", script] + arguments,
             environment: [
                 "HOME": root.path, "USER": "test-user", "TMPDIR": root.path,
                 "KOPIA_CACHE_DIRECTORY": root.appendingPathComponent("cache").path,

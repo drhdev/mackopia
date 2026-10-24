@@ -19,14 +19,7 @@ final class KopiaTLSFixture {
         let script = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
             .deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent(
                 "Scripts/native_tls_fixture.py")
-        // Xcode's /usr/bin/python3 uses LibreSSL without TLS 1.3. Use the existing test runtime from PATH.
-        let candidates = (ProcessInfo.processInfo.environment["PATH"] ?? "").split(separator: ":")
-            .filter { $0.hasPrefix("/") }.map { URL(fileURLWithPath: String($0)).appendingPathComponent("python3") }
-        guard let python = candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0.path) }) else {
-            try? FileManager.default.removeItem(at: root)
-            throw FixtureError.startFailed
-        }
-        process.executableURL = python
+        process.executableURL = TestPythonRuntime.executable
         process.arguments = [script.path, mode, root.path]
         process.environment = [
             "HOME": root.path, "TMPDIR": root.path, "LANG": "en_US.UTF-8", "PYTHONDONTWRITEBYTECODE": "1",
@@ -57,8 +50,7 @@ final class KopiaTLSFixture {
         } catch {
             try? input.fileHandleForWriting.close()
             if launched {
-                if process.isRunning { process.terminate() }
-                process.waitUntilExit()
+                Self.stop(process)
             }
             try? FileManager.default.removeItem(at: root)
             throw error
@@ -67,9 +59,19 @@ final class KopiaTLSFixture {
 
     deinit {
         try? input.fileHandleForWriting.close()
-        if process.isRunning { process.terminate() }
-        process.waitUntilExit()
+        Self.stop(process)
         try? FileManager.default.removeItem(at: root)
+    }
+
+    private static func stop(_ process: Process) {
+        // waitUntilExit can strand its caller's run loop after termination on a cooperative executor.
+        // Foundation owns waitpid; observe its reaped state without entering that run loop.
+        if process.isRunning { process.terminate() }
+        let deadline = ContinuousClock.now.advanced(by: .seconds(1))
+        while process.isRunning {
+            if ContinuousClock.now >= deadline { kill(process.processIdentifier, SIGKILL) }
+            usleep(1_000)
+        }
     }
 
     func waitFor(_ name: String, timeout: Duration = .seconds(3)) async throws {
