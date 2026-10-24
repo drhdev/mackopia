@@ -3,7 +3,8 @@
 import base64
 import hashlib
 import json
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
+from loopback_http_server import LoopbackHTTPServer
 import os
 from pathlib import Path
 import secrets
@@ -287,7 +288,7 @@ def main():
     servers = []
     try:
         for _ in range(2):
-            instance = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+            instance = LoopbackHTTPServer(("127.0.0.1", 0), Handler)
             instance.daemon_threads = True
             instance.socket = context.wrap_socket(instance.socket, server_side=True)
             servers.append(instance)

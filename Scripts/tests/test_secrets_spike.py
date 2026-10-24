@@ -33,7 +33,7 @@ class SecretsSpikeTests(unittest.TestCase):
             self.assertNotIn("AWS_SECRET_ACCESS_KEY", spike.env)
 
     def test_import_does_not_start_server_or_child(self):
-        with patch.object(SPIKE.subprocess, "run") as run, patch.object(SPIKE, "ThreadingHTTPServer") as server:
+        with patch.object(SPIKE.subprocess, "run") as run, patch.object(SPIKE, "LoopbackHTTPServer") as server:
             SPEC.loader.exec_module(SPIKE)
             run.assert_not_called()
             server.assert_not_called()

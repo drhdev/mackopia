@@ -6,7 +6,8 @@ import base64
 from datetime import datetime, timezone
 from email.utils import formatdate
 from contextlib import contextmanager
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
+from loopback_http_server import LoopbackHTTPServer
 import importlib.util
 import json
 from pathlib import Path
@@ -175,7 +176,7 @@ def storage_server(repository, username, password, access_key, session_token, se
                 except (BrokenPipeError, ConnectionResetError):
                     pass
 
-    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    server = LoopbackHTTPServer(("127.0.0.1", 0), Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
