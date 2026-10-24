@@ -22,7 +22,7 @@ Systemnachweise bleiben eigenständige Abnahmegates; sie werden nicht als erledi
 |---|---|---|---|
 | 2026-10-23 | Spec `docs/PROJEKT.md`, `AGENTS.md`, `CLAUDE.md`, repo bootstrap | initial commit | — |
 | 2026-10-24 | Batch 1: vollständiger quellbezogener Policy-Abgleich und verbindliche Ausführungsbatches | lokal auf `main` übernommen | 303 Swift-, 40 Python- und drei gehostete Xcode-Tests grün; keine produktive Job-/Agent-Anbindung |
-| 2026-10-24 | Batch 2: expliziter manueller Dateisystem-Engine-Durchstich mit dauerhafter Historie | lokal auf `codex/p3-manual-backup`, kein Commit/PR | 323 Swift-, 40 Python- und drei gehostete Xcode-Tests grün; zwei Quellen, identische Folgeläufe, Restore und realer Abbruch geprüft; Agent-Anbindung weiter offen |
+| 2026-10-24 | Batch 2: expliziter manueller Dateisystem-Engine-Durchstich mit dauerhafter Historie | `5c094ab`, auf `main` übernommen und gepusht | 323 Swift-, 40 Python- und drei gehostete Xcode-Tests grün; zwei Quellen, identische Folgeläufe, Restore und realer Abbruch geprüft; Agent-Anbindung weiter offen |
 
 ## Next up (Ausführungsbatches gemäß PROJEKT.md §14)
 
@@ -527,3 +527,4 @@ Systemnachweise bleiben eigenständige Abnahmegates; sie werden nicht als erledi
 - Ausdrücklicher Nutzerauftrag: alle Branches auf `main` übernehmen, Arbeitsbranches schließen und `main` pushen. Branch-/PR-Regel für diese Übernahme übersteuert.
 - Nach `git fetch --prune origin` geprüft: alle bisherigen Arbeitsbranch-Commits sind bereits Vorfahren von `main`; nur der geprüfte manuelle Backup-Batch war noch uncommitted. Ein Worktree, keine zusätzlichen Remote-Arbeitsbranches. Übernahme als Fast-forward ohne Umschreiben gemeinsamer Historie; anschließend nur vollständig übernommene lokale Arbeitsbranches entfernen.
 - Code seit der dokumentierten finalen Prüfung unverändert: 323 Swift-, 40 Python- und drei gehostete Xcode-Tests grün; Build und Format-Lint sauber. `git diff --check` erneut sauber. Keine erneuten Laufzeittests für die Git-/Dokumentationsübernahme; bestehende Abnahmegrenzen bleiben bestehen.
+- Ergebnis: `5c094ab` nach `main` übernommen und erfolgreich nach `origin/main` gepusht; zehn vollständig enthaltene lokale Arbeitsbranches mit `git branch -d` gelöscht. Remote besitzt ausschließlich `refs/heads/main`; Arbeitsverzeichnis nach Übernahme sauber. Dieser Abschlussvermerk folgt als Dokumentationscommit auf `main`.
