@@ -739,6 +739,22 @@ für sämtliche verfügbaren Quellen auch eventuell nötigen FDA-/TCC-Zugriff be
 melden `unknown` und blockieren; sie erteilen niemals pauschal Zugriff. Die Energie-/Netzwerkbeobachtung ist
 in gleicher Weise injizierbar, unbekannte Werte erfüllen weiterhin keine eingeschaltete Bedingung.
 
+`LocalSourceAccessChecker` ist ein explizit zu injizierender Quellzugriffsadapter; der Standard bleibt
+`UnknownPreflightObservations`. Er verlangt zunächst einen frischen geschützten Leseversuch über
+`FullDiskAccessProbing` und liest danach jedes übergebene Quellverzeichnis mit `opendir`/`readdir` an.
+Der experimentelle Adapter verlangt diesen Nachweis konservativ für alle Quellen; eine reine Pfadpräfixliste
+könnte geschützte Nachfahren oder Symlinkziele übersehen. Dies ist noch keine produktive FDA-Onboarding-Regel.
+`LocalFullDiskAccessProbe` liest höchstens ein Byte aus `~/Library/Safari/Bookmarks.plist`, nur bei fehlender
+Datei folgt ein Leseversuch von `~/Library/Mail`. Fehlende Testdaten oder andere unklare Fehler bleiben
+`unknown`, verweigerte Rechte ergeben `denied`. Kein Metadaten-/`access`-Check wird als Leseerfolg gewertet.
+Dateideskriptoren werden auf jedem Ausgang geschlossen; finale Dateisymlinks und Spezialdateien werden
+abgewiesen, FIFO-Öffnung ist nicht blockierend. Inhalte, Eintragsnamen und rohe Fehler werden nicht ausgegeben.
+Die Leseabfragen laufen auf einem separaten Actor mit Abbruchprüfung vor/nach den Systemaufrufen; blockierende
+Dateisystemaufrufe selbst sind damit weder unterbrechbar noch zeitlich begrenzt. Kein rekursiver Scan und
+kein Nachweis der Lesbarkeit jedes Nachfahren. Quellenidentität und Live-Schutz bleiben separat erforderlich.
+Die reale TCC-Zuordnung zum signierten Agent/Kopia-Kind ist weiterhin offen (§8/Spike C); dieser Adapter wird
+deshalb noch nicht als Standard verdrahtet. Tests verwenden ausschließlich synthetische temporäre Daten.
+
 Der Diagnoseaufruf gibt seine Sperre bei Rückkehr/Fehler frei. Ein späterer Backup-Start muss den gesamten
 Prüf-/Sicherungs-/Cleanup-Lebenszyklus gemeinsam reservieren, die Prüfungen frisch ausführen und die Ziel-/
 Quellenidentität unmittelbar vor Zugriff erneut prüfen sowie Unmounts überwachen. Weder Berichte aufbewahren
@@ -1095,6 +1111,7 @@ Fehler-Mapping gehört in **eine** Datei mit Tests pro Zeile.
 | 2026-10-23 | Frische Energie-/Netzwerkabfragen als Standard für Preflight-Schritt 8 | §9: IOKit-Power-Sources und NWPathMonitor-AsyncSequence ohne Cache; fünf Sekunden bis zur ersten Pfadbeobachtung, sonst unbekannt. Abbruch bereinigt Beobachter; kein Erreichbarkeits-/SSID-/FDA-Nachweis und noch keine kontinuierlichen Trigger-Monitore. |
 | 2026-10-23 | Reservierte Operationsgrenze mit frischer Wiederprüfung und verpflichtendem Live-Schutz ergänzt | §9: Sperre bis nach Operations-/Monitor-Cleanup halten, nach Aktivierung des Schutzes erneut prüfen und Identitäten unmittelbar vor Callback prüfen; fehlender Schutz verweigert Start. Noch keine produktive Kopia-/Agent-Anbindung, Schutzadapter aktuell nur in Tests. |
 | 2026-10-24 | Nativen lokalen Volume-Schutz über DiskArbitration als expliziten Adapter ergänzt; APFS-Gerät per statfs auflösen | §9: lokale UUID-/Mountbestätigung, Unmount-Veto, terminale Verlustereignisse und Cleanup unter bestehender Reservierung; schwache Callback-Kennungen verhindern späte Zeigerzugriffe. Neu verfügbare ungeschützte Quellen/Netzwerk-Volumes blockieren; Agent-/Benachrichtigungs-UX und echte Eject-Abnahme offen. |
+| 2026-10-24 | Expliziten Quellzugriffsadapter mit echten begrenzten Leseversuchen und separater geschützter Datenprobe ergänzt | §9: fehlende/unklare Probe blockiert, keine Inhaltsausgabe oder rekursive Lesbarkeitsgarantie. Konservativer experimenteller FDA-Nachweis für alle Quellen; Standard bleibt unbekannt, bis signierte Agent-/Kindprozess-Zuordnung geprüft ist. |
 | … | *(Spike-Ergebnisse aus Phase 0 hier eintragen)* | |
 
 ---
