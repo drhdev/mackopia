@@ -7,6 +7,7 @@ package protocol KopiaBackupServing: KopiaPolicyServing {
     func snapshotManifests(source: KopiaSnapshotSource) async throws -> KopiaSnapshots
     func startUpload(source: KopiaSnapshotSource) async throws
     func cancelUpload(source: KopiaSnapshotSource) async throws
+    func pinSnapshot(id: String) async throws -> KopiaSnapshot
 }
 
 /// Owned by a protected engine operation. Closing must finish process reaping before returning.

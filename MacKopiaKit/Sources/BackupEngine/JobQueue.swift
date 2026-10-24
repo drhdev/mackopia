@@ -1,5 +1,6 @@
 import BackupDomain
 import Foundation
+import Persistence
 
 /// In-memory admission and run controls; callers supply execution, cleanup, and repository gates.
 package actor JobQueue {
@@ -7,18 +8,25 @@ package actor JobQueue {
     package let admissions: AsyncStream<UInt64>
     private let admissionSignal: AsyncStream<UInt64>.Continuation
     private var pauseRevision: UInt64 = 0
-    private var pending: [BackupJob] = []
-    private var activeJobs: [UUID: BackupJob] = [:]
+    var pending: [BackupJob] = []
+    var recoveryHeld = false
+    var workRestored = false
+    var discardedWork: Set<UUID> = []
+    private var configurationHeld = false
+    var activeJobs: [UUID: BackupJob] = [:]
     private var executions: [UUID: Execution] = [:]
-    private struct Pause {
+    struct Pause {
         let id: UUID
         var state: BackupPauseState
     }
-    private var pauses: [UUID?: Pause] = [:]
+    var pauses: [UUID?: Pause] = [:]
     private var pauseTimers: [UUID: Task<Void, Never>] = [:]
     private let pauseTimer: BackupPauseTimer
-    private let now: @Sendable () -> Date
-    private var interrupted: [UUID: BackupJob] = [:]
+    let now: @Sendable () -> Date
+    var pausePersistence: (any BackupPauseStoring)?
+    var pausePersistenceFailed = false
+    var canRestorePauses: Bool { pending.isEmpty && activeJobs.isEmpty && pauses.isEmpty }
+    var interrupted: [UUID: BackupJob] = [:]
     private var resumeRequestedAt: [UUID: Date] = [:]
 
     private struct Execution: Sendable {
@@ -28,11 +36,15 @@ package actor JobQueue {
 
     package init() {
         (admissions, admissionSignal) = AsyncStream.makeStream(bufferingPolicy: .bufferingNewest(1))
+        pausePersistence = nil
         pauseTimer = BackupPauseTimer(clock: ContinuousClock())
         now = { .now }
     }
 
-    package init<C: Clock>(clock: C, now: @escaping @Sendable () -> Date) where C.Duration == Duration {
+    package init<C: Clock>(
+        clock: C, now: @escaping @Sendable () -> Date, pausePersistence: (any BackupPauseStoring)? = nil
+    ) where C.Duration == Duration {
+        self.pausePersistence = pausePersistence
         (admissions, admissionSignal) = AsyncStream.makeStream(bufferingPolicy: .bufferingNewest(1))
         pauseTimer = BackupPauseTimer(clock: clock)
         self.now = now
@@ -44,16 +56,19 @@ package actor JobQueue {
     @discardableResult
     package func enqueue(plan: BackupPlan, trigger: Trigger, requestedAt: Date) throws -> BackupJob {
         try Task.checkCancellation()
+        guard !pausePersistenceFailed else { throw ConfigStoreError.storageUnavailable }
         guard !isPaused(plan.id) else { throw JobAdmissionError.planPaused }
         try trigger.validate()
         guard requestedAt.timeIntervalSinceReferenceDate.isFinite else {
             throw DomainValidationError.invalidPlan
         }
-        return insert(plan: plan, trigger: trigger, requestedAt: requestedAt)
+        let job = insert(plan: plan, trigger: trigger, requestedAt: requestedAt)
+        guard !pausePersistenceFailed else { throw ConfigStoreError.storageUnavailable }
+        return job
     }
 
     private func insert(plan: BackupPlan, trigger: Trigger, requestedAt: Date) -> BackupJob {
-        defer { admissionSignal.yield(pauseRevision) }
+        defer { _ = persistWork(); admissionSignal.yield(pauseRevision) }
         if let index = pending.firstIndex(where: { $0.plan.id == plan.id }) {
             let existing = pending[index]
             let refreshed = BackupJob(
@@ -69,11 +84,13 @@ package actor JobQueue {
     /// FIFO follows admission order, not wall time. Skip active plans so their follow-ups cannot
     /// starve other plans. There is at most one active admission per plan.
     package func takeNext() -> BackupJob? {
+        guard !pausePersistenceFailed, !configurationHeld, !recoveryHeld else { return nil }
         guard let index = pending.firstIndex(where: { activeJobs[$0.plan.id] == nil && !isPaused($0.plan.id) }) else {
             return nil
         }
         let job = pending.remove(at: index)
         activeJobs[job.plan.id] = job
+        guard persistWork() else { return nil }
         return job
     }
 
@@ -83,6 +100,7 @@ package actor JobQueue {
     package func complete(_ job: BackupJob, wasCancelled: Bool = false) -> Bool {
         guard activeJobs[job.plan.id]?.id == job.id else { return false }
         activeJobs.removeValue(forKey: job.plan.id)
+        discardedWork.remove(job.id)
         executions.removeValue(forKey: job.id)
         admissionSignal.yield(pauseRevision)
         if !wasCancelled {
@@ -93,6 +111,7 @@ package actor JobQueue {
         {
             _ = insert(plan: interruptedJob.plan, trigger: interruptedJob.trigger, requestedAt: date)
         }
+        _ = persistWork()
         return true
     }
 
@@ -135,6 +154,7 @@ package actor JobQueue {
     /// Interrupted work gets a fresh run ID after cleanup, coalescing any previously queued follow-up.
     package func resume(planID: UUID? = nil, requestedAt: Date) async throws {
         guard requestedAt.timeIntervalSinceReferenceDate.isFinite else { throw DomainValidationError.invalidPlan }
+        try savePauses(storedPauses().filter { $0.planID != planID })
         let old = pauses.removeValue(forKey: planID)?.id
         if old != nil { pauseRevision &+= 1 }
         if let old { pauseTimers[old]?.cancel() }
@@ -162,7 +182,15 @@ package actor JobQueue {
         interrupted.removeValue(forKey: planID)
         resumeRequestedAt.removeValue(forKey: planID)
         let jobs = activeJobs.values.filter { $0.plan.id == planID }
+        discardedWork.formUnion(jobs.map(\.id))
+        _ = persistWork()
         await cancelAndJoin(jobs)
+    }
+
+    /// Reload holds dequeue without changing durable pauses or cancelling unaffected active work.
+    func holdForConfiguration(_ held: Bool) {
+        configurationHeld = held
+        if !held { admissionSignal.yield(pauseRevision) }
     }
 
     package func isPaused(_ planID: UUID) -> Bool { pauses[nil] != nil || pauses[planID] != nil }
@@ -196,7 +224,7 @@ package actor JobQueue {
         for id in timers.keys { await joinTimer(id) }
     }
 
-    private func replacePause(planID: UUID?, state: BackupPauseState) -> UUID? {
+    func replacePause(planID: UUID?, state: BackupPauseState) -> UUID? {
         let old = pauses.updateValue(Pause(id: UUID(), state: state), forKey: planID)?.id
         if let old { pauseTimers[old]?.cancel() }
         return old
@@ -208,14 +236,14 @@ package actor JobQueue {
         return jobs
     }
 
-    private func armPauseTimer(planID: UUID?, until: Date) {
+    func armPauseTimer(planID: UUID?, until: Date) {
         guard let id = pauses[planID]?.id else { return }
         let date = now()
         let remaining = until.timeIntervalSince(date)
         guard date.timeIntervalSinceReferenceDate.isFinite, remaining.isFinite,
             abs(remaining) <= Date.distantFuture.timeIntervalSince(.distantPast)
         else {
-            pauses[planID]?.state = .timerUnavailable(until: until)
+            markTimerUnavailable(planID: planID, until: until)
             return
         }
         let delay = max(0, remaining)
@@ -229,7 +257,7 @@ package actor JobQueue {
         guard let pause = pauses[planID], pause.id == id, case .until(let until) = pause.state else { return }
         let date = now()
         guard ready, date.timeIntervalSinceReferenceDate.isFinite else {
-            pauses[planID]?.state = .timerUnavailable(until: until)
+            markTimerUnavailable(planID: planID, until: until)
             return
         }
         if until > date {
@@ -238,10 +266,12 @@ package actor JobQueue {
         } else {
             // date was validated above, so resume cannot reject it.
             do { try await resume(planID: planID, requestedAt: date) } catch {
-                if pauses[planID]?.id == id { pauses[planID]?.state = .timerUnavailable(until: until) }
+                if pauses[planID]?.id == id { markTimerUnavailable(planID: planID, until: until) }
             }
         }
     }
+
+    func signalPausePersistenceFailure() { admissionSignal.yield(pauseRevision) }
 
     private func validatePauseDate(_ date: Date) throws {
         guard date.timeIntervalSinceReferenceDate.isFinite, now().timeIntervalSinceReferenceDate.isFinite,

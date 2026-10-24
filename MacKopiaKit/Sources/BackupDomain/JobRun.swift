@@ -7,6 +7,8 @@ public struct JobRun: Codable, Sendable, Hashable, Identifiable {
     }
     public enum Issue: String, Codable, Sendable {
         case preflight, operation, cleanup, missingSource, fileErrors, incompleteSnapshot, cancellationUnconfirmed
+        case processInterrupted
+        case suspiciousSnapshot, snapshotPinFailed
     }
     public struct SourceResult: Codable, Sendable, Hashable {
         public let sourceID: UUID
@@ -16,10 +18,11 @@ public struct JobRun: Codable, Sendable, Hashable, Identifiable {
         public let files: Int64
         public let ignoredErrors: Int64
         public let errors: Int64
+        public let issues: [Issue]?
 
         public init(
             sourceID: UUID, snapshotID: String, rootID: String, bytes: Int64, files: Int64, errors: Int64,
-            ignoredErrors: Int64 = 0
+            ignoredErrors: Int64 = 0, issues: [Issue]? = nil
         ) {
             self.sourceID = sourceID
             self.snapshotID = snapshotID
@@ -28,6 +31,7 @@ public struct JobRun: Codable, Sendable, Hashable, Identifiable {
             self.files = files
             self.errors = errors
             self.ignoredErrors = ignoredErrors
+            self.issues = issues
         }
     }
 

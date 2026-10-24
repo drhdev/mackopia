@@ -1,0 +1,12 @@
+{
+  "stats": {
+    "processedObjectCount": 4,
+    "processedBytes": 40,
+    "readFileCount": 3,
+    "readBytes": 40,
+    "expectedTotalObjectCount": 4,
+    "expectedTotalFileCount": 2,
+    "expectedTotalBytes": 24
+  },
+  "errorCount": 0
+}

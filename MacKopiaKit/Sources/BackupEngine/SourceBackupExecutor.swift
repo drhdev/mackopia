@@ -19,6 +19,7 @@ package struct SourceBackupExecutor: Sendable {
         guard previous.count == snapshots.count, previous.allSatisfy({ !$0.isEmpty }) else {
             throw BackupOperationError.sourceResponseInvalid
         }
+        let baseline = try SnapshotPlausibilityGuard.baseline(snapshots)
         if let status = try await status(selector), status.status != "IDLE" {
             throw BackupOperationError.sourceBusy
         }
@@ -26,7 +27,8 @@ package struct SourceBackupExecutor: Sendable {
         do {
             // Mark the request as possibly active before awaiting: transport failure is not proof of no write.
             try await service.startUpload(source: selector)
-            return try await waitForSnapshot(plan: plan, source: source, selector: selector, previous: previous)
+            return try await waitForSnapshot(
+                plan: plan, source: source, selector: selector, previous: previous, baseline: baseline)
         } catch {
             let service = service
             let clock = clock
@@ -42,15 +44,17 @@ package struct SourceBackupExecutor: Sendable {
     }
 
     private func waitForSnapshot(
-        plan: BackupPlan, source: BackupSource, selector: KopiaSnapshotSource, previous: Set<String>
+        plan: BackupPlan, source: BackupSource, selector: KopiaSnapshotSource, previous: Set<String>,
+        baseline: KopiaSnapshot?
     ) async throws -> JobRun.SourceResult {
         let clock = self.clock
         return try await waitForSnapshot(
-            clock: clock, plan: plan, source: source, selector: selector, previous: previous)
+            clock: clock, plan: plan, source: source, selector: selector, previous: previous, baseline: baseline)
     }
 
     private func waitForSnapshot<C: Clock>(
-        clock: C, plan: BackupPlan, source: BackupSource, selector: KopiaSnapshotSource, previous: Set<String>
+        clock: C, plan: BackupPlan, source: BackupSource, selector: KopiaSnapshotSource, previous: Set<String>,
+        baseline: KopiaSnapshot?
     ) async throws -> JobRun.SourceResult where C.Duration == Duration {
         let started = clock.now
         let acknowledgmentDeadline = started.advanced(by: .seconds(30))
@@ -83,9 +87,16 @@ package struct SourceBackupExecutor: Sendable {
                     let reportedErrors = last.stats?.errorCount, reportedErrors >= 0,
                     let ignoredErrors = last.stats?.ignoredErrorCount, ignoredErrors >= 0
                 else { throw BackupOperationError.sourceResponseInvalid }
-                return JobRun.SourceResult(
+                let result = JobRun.SourceResult(
                     sourceID: source.id, snapshotID: id, rootID: rootID, bytes: bytes, files: files,
                     errors: max(errors, reportedErrors), ignoredErrors: ignoredErrors)
+                // Finish protection and preserve the result before propagating caller cancellation.
+                let guardService = SnapshotPlausibilityGuard(service: service)
+                return await Task.detached {
+                    await guardService.protect(
+                        result: result, snapshot: snapshot, baseline: baseline, source: selector,
+                        previousIDs: previous, percent: plan.options.plausibilityDropPercent)
+                }.value
             }
             if let state, state.status != "IDLE" {
                 guard state.status == "UPLOADING" || state.status == "PENDING" else {

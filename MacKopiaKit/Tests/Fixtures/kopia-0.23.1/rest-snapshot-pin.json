@@ -1,0 +1,90 @@
+{
+  "before": {
+    "id": "e07fa1ae0ee2ac4b9c792e269dce4639",
+    "description": "",
+    "startTime": "2026-10-24T22:55:29.658178Z",
+    "endTime": "2026-10-24T22:55:29.664375Z",
+    "summary": {
+      "size": 30,
+      "files": 2,
+      "symlinks": 0,
+      "dirs": 1,
+      "maxTime": "2026-10-24T22:55:29.655623459Z",
+      "numFailed": 0
+    },
+    "rootID": "k0ce481786400b86b1e518b794bbab1e4",
+    "retention": [],
+    "pins": [
+      "fixture-existing"
+    ]
+  },
+  "response": [
+    {
+      "id": "81ab5b3aada44967892e5bbe929102a6",
+      "description": "",
+      "startTime": "2026-10-24T22:55:29.658178Z",
+      "endTime": "2026-10-24T22:55:29.664375Z",
+      "summary": {
+        "size": 30,
+        "files": 2,
+        "symlinks": 0,
+        "dirs": 1,
+        "maxTime": "2026-10-24T22:55:29.655623459Z",
+        "numFailed": 0
+      },
+      "rootID": "k0ce481786400b86b1e518b794bbab1e4",
+      "retention": [],
+      "pins": [
+        "fixture-existing",
+        "mackopia-plausibility"
+      ]
+    }
+  ],
+  "after": [
+    {
+      "id": "ae589630838ef944fdda6eb5b383ada8",
+      "description": "",
+      "startTime": "2026-10-24T22:55:28.444589Z",
+      "endTime": "2026-10-24T22:55:28.449872Z",
+      "summary": {
+        "size": 22,
+        "files": 2,
+        "symlinks": 0,
+        "dirs": 1,
+        "maxTime": "2026-10-24T22:55:28.109982921Z",
+        "numFailed": 0
+      },
+      "rootID": "k752d35c494bdec606d6ac8df8e55c361",
+      "retention": [
+        "latest-2"
+      ],
+      "pins": []
+    },
+    {
+      "id": "81ab5b3aada44967892e5bbe929102a6",
+      "description": "",
+      "startTime": "2026-10-24T22:55:29.658178Z",
+      "endTime": "2026-10-24T22:55:29.664375Z",
+      "summary": {
+        "size": 30,
+        "files": 2,
+        "symlinks": 0,
+        "dirs": 1,
+        "maxTime": "2026-10-24T22:55:29.655623459Z",
+        "numFailed": 0
+      },
+      "rootID": "k0ce481786400b86b1e518b794bbab1e4",
+      "retention": [
+        "latest-1",
+        "hourly-1",
+        "daily-1",
+        "weekly-1",
+        "monthly-1"
+      ],
+      "pins": [
+        "fixture-existing",
+        "mackopia-plausibility"
+      ]
+    }
+  ]
+}

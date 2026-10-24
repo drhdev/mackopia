@@ -9,8 +9,8 @@ package protocol JobHistoryRecording: Sendable {
 }
 
 /// Agent-owned SQLite history. In-progress rows survive crashes; they never imply successful backups.
-package actor HistoryStore: JobHistoryRecording {
-    private let database: DatabaseQueue
+package actor HistoryStore: JobHistoryRecording, JobHistoryScheduleReading {
+    let database: DatabaseQueue
 
     package init(directory: URL) throws {
         do {
@@ -44,6 +44,19 @@ package actor HistoryStore: JobHistoryRecording {
                         table.column("payload", .blob).notNull()
                     }
                 }
+                migrator.registerMigration("verification-history-v1") { db in
+                    try db.create(table: "verifications") { table in
+                        table.primaryKey("id", .text)
+                        table.column("planID", .text).notNull()
+                        table.column("repositoryID", .text).notNull()
+                        table.column("kind", .text).notNull()
+                        table.column("endedAt", .double).notNull()
+                        table.column("payload", .blob).notNull()
+                    }
+                    try db.create(
+                        index: "verification-health", on: "verifications",
+                        columns: ["planID", "repositoryID", "kind", "endedAt"])
+                }
                 try migrator.migrate(queue)
                 return queue
             }
@@ -74,6 +87,38 @@ package actor HistoryStore: JobHistoryRecording {
                     sql: "UPDATE runs SET outcome = ?, payload = ? WHERE id = ? AND outcome = ?",
                     arguments: [run.outcome.rawValue, data, run.id.uuidString, JobRun.Outcome.running.rawValue])
                 guard db.changesCount == 1 else { throw ConfigStoreError.storageChanged }
+            }
+        } catch { throw ConfigStoreError.storageUnavailable }
+    }
+
+    /// Read the complete history rather than a recent-page window. Plan identity is indexed;
+    /// repository identity prevents an old destination's success from delaying a changed plan.
+    package func scheduleAnchors(plans: [BackupPlan], before: Date) throws -> [UUID: Date] {
+        guard plans.count <= 4096, Set(plans.map(\.id)).count == plans.count,
+            before.timeIntervalSinceReferenceDate.isFinite, before >= .distantPast, before <= .distantFuture
+        else { throw ConfigStoreError.invalidConfiguration }
+        do {
+            return try database.read { db in
+                var anchors: [UUID: Date] = [:]
+                for plan in plans where plan.isEnabled {
+                    let timestamp = try Double.fetchOne(
+                        db,
+                        sql: """
+                            SELECT MAX(startedAt) FROM runs
+                            WHERE planID = ? AND outcome IN (?, ?) AND startedAt <= ? AND startedAt >= ?
+                            AND json_extract(CAST(payload AS TEXT), '$.repositoryID') = ?
+                            """,
+                        arguments: [
+                            plan.id.uuidString, JobRun.Outcome.succeeded.rawValue,
+                            JobRun.Outcome.succeededWithWarnings.rawValue, before.timeIntervalSince1970,
+                            Date.distantPast.timeIntervalSince1970, plan.repositoryID.uuidString,
+                        ])
+                    if let timestamp {
+                        guard timestamp.isFinite else { throw ConfigStoreError.storageUnavailable }
+                        anchors[plan.id] = Date(timeIntervalSince1970: timestamp)
+                    }
+                }
+                return anchors
             }
         } catch { throw ConfigStoreError.storageUnavailable }
     }

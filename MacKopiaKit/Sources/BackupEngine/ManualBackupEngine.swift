@@ -2,6 +2,7 @@ import BackupDomain
 import Foundation
 import KopiaServer
 import Persistence
+import SystemIntegration
 
 package enum ManualBackupStage: Sendable, Equatable {
     case connecting, synchronizing(sourceID: UUID), uploading(sourceID: UUID), stopping
@@ -10,6 +11,7 @@ package enum ManualBackupStage: Sendable, Equatable {
 /// Protected execution shared by explicit manual requests and the package automatic runtime.
 package actor ManualBackupEngine {
     private let runner: ConfiguredJobRunner
+    private let sleep: any SleepPreventing
     private let sessions: any BackupSessionOpening
     private let history: any JobHistoryRecording
     private let resolver: TimeMachineExclusionResolver
@@ -23,10 +25,12 @@ package actor ManualBackupEngine {
     package init(
         runner: ConfiguredJobRunner, sessions: any BackupSessionOpening, history: any JobHistoryRecording,
         resolver: TimeMachineExclusionResolver, homeDirectory: String,
+        sleep: any SleepPreventing = LocalSleepPreventer(),
         clock: any Clock<Duration> = ContinuousClock(), now: @escaping @Sendable () -> Date = { .now },
         progress: @escaping @Sendable (BackupProgress) async -> Void = { _ in },
         stageChanged: @escaping @Sendable (ManualBackupStage) async -> Void = { _ in }
     ) {
+        self.sleep = sleep
         self.runner = runner
         self.sessions = sessions
         self.history = history
@@ -46,6 +50,7 @@ package actor ManualBackupEngine {
     /// Caller cancellation stops the current source and skips the rest; no automatic resumption.
     /// History writes run outside cancellation and finish before the queue releases the run identity.
     package func performNext(
+        suspiciousSnapshot: @escaping @Sendable (JobRun) async -> Void = { _ in },
         finished: @escaping @Sendable (BackupJob, Result<JobRun, any Error>) async -> Void = { _, _ in }
     ) async throws -> JobRun? {
         guard !active else { throw RepositoryOperationError.repositoryBusy }
@@ -55,9 +60,13 @@ package actor ManualBackupEngine {
         do {
             try await execute(record: record)
             let run = await record.completed
+            if let run, run.issues.contains(.suspiciousSnapshot) { await suspiciousSnapshot(run) }
             if let job = await record.job, let run { await finished(job, .success(run)) }
             return run
         } catch {
+            if let run = await record.completed, run.issues.contains(.suspiciousSnapshot) {
+                await suspiciousSnapshot(run)
+            }
             if let job = await record.job { await finished(job, .failure(error)) }
             throw error
         }
@@ -65,6 +74,7 @@ package actor ManualBackupEngine {
 
     /// Completion observation happens only after the runner releases the queue following cleanup.
     private func execute(record: ManualRunRecord) async throws {
+        let sleep = sleep
         let sessions = sessions
         let history = history
         let resolver = resolver
@@ -82,6 +92,11 @@ package actor ManualBackupEngine {
                 guard job.plan.options.parallelism == nil, job.plan.options.uploadLimitMbps == nil,
                     !job.plan.options.ejectVolumeAfterBackup
                 else { throw BackupOperationError.unsupportedOptions }
+                try Task.checkCancellation()
+                let assertion = try sleep.acquire()
+                // Keep the assertion through source cancellation and server cleanup on every exit.
+                defer { assertion.release() }
+                try Task.checkCancellation()
                 await stageChanged(.connecting)
                 let session = try await sessions.open(repository: repository, options: job.plan.options)
                 do {
@@ -112,6 +127,7 @@ package actor ManualBackupEngine {
                         await stageChanged(.uploading(sourceID: source.id))
                         let result = try await executor.backup(plan: job.plan, source: source, selector: selector)
                         await record.append(result)
+                        try Task.checkCancellation()
                     }
                 } catch {
                     let cleanup = await Task.detached { try await session.close() }.result
@@ -156,6 +172,7 @@ private actor ManualRunRecord {
     func finish(job: BackupJob, result: Result<BackupOperationResult<Bool>, any Error>) -> JobRun {
         self.job = job
         var issues: [JobRun.Issue] = []
+        for issue in results.flatMap({ $0.issues ?? [] }) where !issues.contains(issue) { issues.append(issue) }
         let outcome: JobRun.Outcome
         switch result {
         case .success(.notStarted):

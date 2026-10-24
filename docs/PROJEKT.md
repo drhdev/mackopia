@@ -416,7 +416,39 @@ im injizierten Kalender (auch über Sommer-/Winterzeitwechsel) oder unbegrenzt. 
 Endzeitpunkt bleibt bei Zeitzonenwechsel absolut. Bei zurückgestellter Wanduhr wird vorzeitig ausgelöster
 Timer neu angesetzt; `reconcilePauses` gleicht Wake-/Uhrzeitänderungen ab. `AutomaticBackupRuntime` ruft diesen Abgleich bei Wake-/Uhrzeitereignissen auf. Timerfehler und explizites Ende der Timer-Überwachung lassen die Pause
 als `timerUnavailable(until:)` sichtbar bestehen; nur explizites Fortsetzen/Ersetzen hebt sie dann auf.
-Persistenter Pausenstatus und Agent-/XPC-Anbindung folgen separat; die gemeinsame Package-Laufzeit wird in §7.5 beschrieben. Niedrigstufige `takeNext`-Aufrufer ohne registrierten Task
+Die Package-Laufzeit speichert Plan- und globale Pausen vor der wirksamen Steueränderung in
+`pauses.json` neben der Konfiguration. `BackupPauseStore` verwendet dieselbe private 0700-Ablage,
+0600-Dateien, Symlink-/Hardlink-Abweisung, gemeinsame Dateisperre und atomaren fsync-/Rename-Pfad
+wie `ConfigStore`. Versioniertes Dokument mit höchstens 4097 eindeutigen Scopes; ausschließlich
+Plan-UUID, unbegrenzte Pause/absoluter Endzeitpunkt bzw. Timerfehlerstatus, keine Pfade oder Secrets.
+Jede Laufzeit besitzt einen separaten Byte-Vergleichsstand; externe Änderungen verhindern Überschreiben.
+Lesefehler, ungültige Dokumente und unbekannte Versionen verhindern den Start statt leere Pausen anzunehmen.
+Vor Trigger-/Engine-Aktivierung werden Pausen geladen; entfernte Plan-UUIDs und bereits abgelaufene
+normale Zeitpausen werden dauerhaft entfernt. Timerfehlerpausen bleiben auch nach ihrem ursprünglichen
+Endzeitpunkt manuell lösbar. Fortsetzen und automatischer Ablauf schreiben vor der Queue-Freigabe.
+Ein Schreibfehler verriegelt Aufnahme und Entnahme; die Laufzeit beendet aktive Arbeit über den normalen
+Abbruch-/Cleanup-/Historienpfad und meldet ausschließlich `controlStateUnavailable`. Beim fehlgeschlagenen
+Speichern bleibt der letzte dauerhafte Stand maßgeblich; ein korrigierter Speicher wird erst mit einer
+neuen Laufzeitinstanz wieder geöffnet. Shutdown erzeugt keine dauerhafte globale Pause und ersetzt
+keine gespeicherten Zeitpausen durch den rein lokalen Timer-Shutdownstatus.
+Schema 2 derselben Datei ergänzt wartende/aktive/unterbrochene Aufträge (höchstens 8192, eindeutige
+Laufkennungen und höchstens ein wartender sowie ein aktiver/unterbrochener Auftrag je Plan).
+Schema 1 wird im Speicher mit leerer Arbeit gelesen, beim nächsten Write als Schema 2 gesichert;
+ältere Clients lehnen Schema 2 ab. Pausenänderungen erhalten gespeicherte Arbeit und umgekehrt.
+Nur Lauf-/Plan-/Ziel-UUID, Trigger, Anforderungsdatum und Status, keine Quellpfade oder alten Mount-/TCP-
+Nachweise. Aufnahme und Entnahme werden vor weiterer Ausführung gesichert, Stopp entfernt dauerhafte
+Absicht vor dem Abbruch. Jede Queue-Mutation wird synchron unter der bestehenden atomaren Ablage
+gesichert; Schreibfehler sperren weitere Aufnahme/Entnahme und führen zum Runtime-Shutdown.
+Beim Neustart werden passende Aufträge anhand der aktuellen aktivierten Pläne, Ziel-UUID und noch
+konfigurierten Trigger zusammengefasst und mit neuen Laufkennungen eingeordnet. Pausen bleiben wirksam;
+Fortsetzen gibt diese Arbeit frei. Abgelaufene Zeitpausen halten sie nicht weiter auf. Wiederanlauf wartet
+mindestens zwei Minuten und bis nach der Login-Sperre; währenddessen bleibt Queue-Entnahme gesperrt.
+Jede tatsächliche Ausführung durchläuft wieder ConfigStore, UUID-/Zugriffs-/Netzwerkprüfungen und den
+geschützten Engine-Pfad. Historisch abgeschlossene Erfolge/Warnungen/Fehler/Skips werden nicht wiederholt;
+gespeicherte Cancellation-Absicht darf hingegen nach Pause/Shutdown fortgesetzt werden. Bei Shutdown
+wird Persistenz vor Worker-Abbruch getrennt, damit die letzte Absicht ohne neue globale Pause erhalten bleibt.
+Retry-Ketten und noch nicht angenommene Trigger-Evidenz bleiben flüchtig. Agent-/XPC-Anbindung bleibt separat.
+Die gemeinsame Package-Laufzeit wird in §7.5 beschrieben. Niedrigstufige `takeNext`-Aufrufer ohne registrierten Task
 bleiben selbst für Abbruch/Bereinigung verantwortlich; die Engine verwendet den registrierten Runner.
 
 Checkpoint-Ziel bleibt 15 Min.; Kopia 0.23.1 bietet dafür jedoch **kein Policy-Feld und keine Server-Option**.
@@ -474,7 +506,8 @@ struct RetentionPolicy { keepLatest, keepHourly, keepDaily, keepWeekly, keepMont
 struct ExcludeRules { useMacOSDefaults: Bool; honorTimeMachineExclusions: Bool; ignoreCacheDirs: Bool
                       patterns: [String] /* gitignore-Syntax wie .kopiaignore */; maxFileSizeMB: Int?; oneFileSystem: Bool }
 struct PlanOptions { compression: Compression /* .zstd (Standard), .s2, .none */; parallelism: Int?
-                     lowPriority: Bool; uploadLimitMbps: Double?; ejectVolumeAfterBackup: Bool }
+                     lowPriority: Bool; uploadLimitMbps: Double?; ejectVolumeAfterBackup: Bool
+                     plausibilityDropPercent: Int /* 1–100, Standard 50 */ }
 struct HealthThresholds { warnAfter: Duration /* Standard 3 Tage */; criticalAfter: Duration /* 7 Tage */ }
 ```
 
@@ -631,7 +664,7 @@ erhalten. Timer-Stopp verhindert weitere Zustellungen, beendet aber keinen berei
 Der Empfänger muss jede Anforderung frisch über `ConfiguredJobRunner` zulassen und den geschützten
 Engine-Pfad verwenden. `observeSystemEvents` verbindet den Scheduler über einen injizierten Monitor
 mit Wake-, Uhrzeit- und Zeitzonenereignissen; andere Zustände werden als Hinweise weitergegeben.
-Die Package-Laufzeitkomposition ist in §7.5 beschrieben; Agent-Anbindung und automatische Historienanker bleiben separat offen;
+Die Package-Laufzeitkomposition einschließlich automatischer Historienanker ist in §7.5 beschrieben; Agent-Anbindung bleibt separat offen;
 dieser Actor schaltet keine Quellfreigabe frei.
 
 ### 7.4 Trigger-Monitore (`SystemIntegration`)
@@ -650,7 +683,12 @@ dieser Actor schaltet keine Quellfreigabe frei.
 - **PowerMonitor**: `IOPSNotificationCreateRunLoopSource` + `IOPSCopyPowerSourcesInfo` (Netzteil, Ladestand),
   `ProcessInfo.isLowPowerModeEnabled` → bei Stromsparmodus Pläne mit `requiresACPower` überspringen.
 - **SleepAssertion**: Während eines Laufs `IOPMAssertionCreateWithName(kIOPMAssertionTypePreventUserIdleSystemSleep, …)`
-  mit Grund „MacKopia-Backup läuft“, garantiert freigegeben (defer / Actor-Deinit).
+  mit Grund „MacKopia-Backup läuft“, garantiert freigegeben (defer / Deinit).
+  `LocalSleepPreventer` liefert eine injizierbare, nebenläufig idempotent freigebbare Assertion.
+  Die gemeinsame manuelle/automatische Engine erwirbt sie nach erfolgreicher Vorabprüfung und
+  Optionsvalidierung, vor Serverstart. Sie bleibt bis zum Ende der Server-/Abbruchbereinigung aktiv;
+  Fehler beim Erwerb verhindern den Start und werden als fehlgeschlagener Lauf protokolliert.
+  Expliziter Ruhezustand und Display-Ruhezustand bleiben durch macOS steuerbar.
 
 `LocalSystemEventMonitor` stellt eine abbrechbare kontinuierliche Beobachtung bereit: `NWPathMonitor`
 als AsyncSequence mit Kosten-/Beschränkungszustand und verwendeten Interface-Typen; Energieänderungen
@@ -663,8 +701,7 @@ verhindern Zugriffe auf freigegebene Besitzer. Abbruch wartet auf beide Beobacht
 Callbacks und Notification-Abonnements. Ein unerwartetes Stream-Ende oder Überlauf des auf 256 Ereignisse
 begrenzten nativen Puffers liefert einen Fehler statt stillen Ereignisverlusts. Doppelte Power-/Netzwerk-
 und Mount-Zustände werden unterdrückt. Der Netzwerkzustand ist kein Erreichbarkeitsnachweis für ein
-Speicherziel. Energiebedingungen bei automatischer Ausführung, SleepAssertion und produktive
-Agent-Komposition bleiben separat offen.
+Speicherziel. Die produktive Agent-Komposition bleibt separat offen.
 
 `EventTriggerCoordinator` ordnet UUID-Ereignisse aktivierten Plänen mit `onVolumeMount` und passender
 Quell- oder Zielvolume-UUID zu. Ein abbrechbarer monotoner Timer entprellt relevante Mount-Ereignisse pro
@@ -709,7 +746,7 @@ ein Plan aktiv ist, wird höchstens ein weiterer Auftrag dafür vorgemerkt. Ande
 entnommen werden; derselbe Plan bleibt bis zum bestätigten Abschluss gesperrt. Abschluss benötigt die
 konkrete Laufkennung, damit verspätete Rückmeldungen keinen neueren Lauf freigeben. Die Engine muss
 Abschluss erst nach vollständigem Operations-Cleanup melden und Planfreigabe, aktuellen ConfigStore-Stand
-sowie Repository-Sperre beim Start erneut prüfen. Die Queue startet selbst keine Prozesse; der Laufzeitbesitzer verbindet Scheduler, Retry und Historie. Persistente Wiederaufnahme und Agent-Anbindung bleiben offen.
+sowie Repository-Sperre beim Start erneut prüfen. Die Queue startet selbst keine Prozesse; der Laufzeitbesitzer verbindet Scheduler, Retry, Historie und dauerhafte Wiederaufnahme. Agent-Anbindung bleibt offen.
 
 `ConfiguredJobRunner` verbindet diese Queue explizit mit dem ConfigStore und der bestehenden geschützten
 Operationsgrenze. Einlieferung und Entnahme lösen Plan/Speicherziel erneut aus der Konfiguration auf:
@@ -743,14 +780,20 @@ Ein eindeutiger `running`-Eintrag wird vor der Startprüfung persistiert; genau 
 Plan-/Speicherziel-/Lauf-UUID, Trigger, Zeiten, Snapshot-/Root-IDs je abgeschlossener Quelle und deren Statistik
 sowie ausschließlich feste Fehlercodes. Secrets, Rohdiagnostik und Quellpfade werden nicht gespeichert.
 Schlägt der Starteintrag fehl, beginnt keine Operation; schlägt der Abschlusseintrag fehl, meldet der Aufrufer
-einen Fehler statt Erfolg. Nicht abgeschlossene Einträge bleiben nach einem Prozessabsturz als `running`
-sichtbar, ohne automatische Wiederaufnahme oder Erfolgsbehauptung. Automatische Crash-Abstimmung,
-Logdatei-Verknüpfung und die Aktivitätsoberfläche folgen separat.
+einen Fehler statt Erfolg. Nicht abgeschlossene Einträge bleiben bis zum nächsten Runtime-Start nach
+einem Prozessabsturz als `running` sichtbar. `JobHistoryRecovering` schließt sie vor Job-Freigabe in einer
+SQLite-Transaktion als `cancelled` mit festem `processInterrupted`-Hinweis ab; Endzeit mindestens Startzeit,
+keine Erfolgsbehauptung. Ungültige Payloads rollen die gesamte Abstimmung zurück und blockieren den Start.
+Die produktive Komposition muss genau einen Runtime-Besitzer sicherstellen; Abstimmung darf nie parallel
+zu einem weiterhin aktiven Engine-Besitzer aufgerufen werden. Ohne dauerhafte Queue-Absicht erzeugt
+ein alter Historieneintrag keine neue Arbeit. History-Abschluss und Queue-Datei bilden keine gemeinsame
+Transaktion: bereits terminale Einträge entfernen alte Absicht beim Start; ein Crash nach Snapshot-Erzeugung
+vor Historienabschluss kann einen neuen inkrementellen Lauf bewirken. Logdatei-Verknüpfung und
+Aktivitätsoberfläche folgen separat.
 
 Der manuelle Durchstich unterstützt Dateisystem-Ziele und normale bzw. niedrige Prozesspriorität
 (`QOS_CLASS_BACKGROUND` bereits bei `posix_spawn`). Noch nicht verdrahtete explizite Parallelitäts-/Bandbreiten-
 und Auswerfen-Optionen blockieren vor dem Serverstart, statt still ignoriert zu werden. Netzwerkziele,
-persistenter Pausenstatus,
 Plausibilitätsprüfung/Pinning und XPC-Komposition bleiben den weiteren Batches zugeordnet. Die produktive Quellfreigabe bleibt ohne signierten FDA-/Kindprozessnachweis gesperrt;
 der Integrationstest autorisiert ausschließlich selbst erzeugte temporäre Quellen über einen Testadapter.
 
@@ -764,7 +807,7 @@ Jede Wiederholung liefert über `ConfiguredJobRunner` den geprüften Plan-/Speic
 geänderte Konfiguration verhindert die Aufnahme. Abbruch wird nie wiederholt. Reset/Stop bricht Timer
 und laufende Aufnahme ab und wartet deren Ende ab. Die Laufzeitkomposition meldet erst nach
 Historienabschluss, Prozessbereinigung und Queue-Freigabe Fehler und setzt Ketten bei Erfolg,
-neuem regulärem Auftrag und Pause/Stopp zurück. Ein Konfigurationswechsel erfordert eine neue Laufzeitinstanz. Aktuell klassifiziert die
+neuem regulärem Auftrag und Pause/Stopp zurück. Konfigurationswechsel erfolgen über den expliziten Live-Reload. Aktuell klassifiziert die
 Engine nur `volumeDisappeared` automatisch als transient. Vertrauenswürdige Adapter können explizite
 Netzwerk-/Timeout-Evidenz übergeben; pauschale Transport-/Kopia-Fehler bleiben permanent. Weitere typisierte Fehlerklassifizierung, produktive Agent-Anbindung und persistente Wiederaufnahme fehlen noch.
 
@@ -787,18 +830,60 @@ Bereinigung ab; danach folgt ausschließlich ein fester `monitorUnavailable`-Cod
 und Admission-Mitteilungen nur feste Codes mit Plan-UUIDs, keine Adapterdiagnostik oder Pfade.
 
 Die Laufzeit hat explizites, idempotentes `shutdown` mit Join aller eigenen Worker und Pausentimer;
-der Besitzer muss sie auch bei Fehlern so beenden. Shutdown ist terminal. Konfiguration wird beim Start
-gebunden; Live-Konfigurationsreload und automatische Historienanker sind noch nicht integriert. Letzte
-Laufdaten werden weiterhin explizit an `start(lastRuns:)` übergeben. Die Konfiguration wird trotzdem vor
+der Besitzer muss sie auch bei Fehlern so beenden. Shutdown ist terminal. `reloadConfiguration()` übernimmt
+explizit den zuletzt vom ConfigStore akzeptierten Stand; Laden/Speichern bleibt Verantwortung des Besitzers.
+Während des Abgleichs sind neue Admissions und Queue-Entnahme gesperrt; bestehende unveränderte Läufe
+laufen weiter. Geänderte/entfernte Pläne oder geänderte Speicherziele werden über den normalen Abbruch-/
+Historien-/Cleanup-Pfad beendet, ihre Folgeaufträge und Wiederaufnahmewünsche verworfen. Bestehende
+Pausen bleiben erhalten; Pausen entfernter Pläne werden dauerhaft entfernt. Retry-Ketten und bisherige
+Mount-/TCP-Evidenz werden verworfen; Ereignis-Trigger benötigen frische Systemereignisse. Der Scheduler
+behält unveränderte Termine und berechnet neue Trigger mit Historienankern. Gleichzeitige Steuerbefehle
+melden `repositoryBusy`. Lesefehler, Cancellation oder ein während der Vorbereitung veränderter Store
+stoppen die Laufzeit mit festem `configurationUnavailable`-Code; ein paralleler Shutdown kann sie nicht
+reaktivieren. Kein automatischer Dateiwächter und keine implizite Reparatur des Sicherheitsmodus.
+Ohne explizites `start(lastRuns:)` lädt die Laufzeit
+Anker über `JobHistoryScheduleReading`, sofern der Historienadapter dies unterstützt (`HistoryStore`
+implementiert beide Protokolle). Pro aktiviertem Plan zählt der späteste Start eines erfolgreichen Laufs
+(auch mit Warnungen) für dieselbe Plan-/Speicherziel-UUID, höchstens zur aktuellen Wanduhr.
+Fehler, Abbruch, übersprungene und crashbedingt offene Läufe gelten nicht als Erfolg. Die Abfrage nutzt
+die vollständige Historie statt einer begrenzten Recent-Seite. Ohne passenden Erfolg oder ohne lesenden
+Historienadapter gilt der Startzeitpunkt; explizites `[:]` wählt dieses Verhalten auch bei vorhandener
+Historie. Lesefehler stoppen den Start vor Scheduler/Monitoring. Nach suspendierendem Lesen werden
+Cancellation und Laufzeitgeneration erneut geprüft, damit Shutdown keine verspätete Aktivierung zulässt.
+Bestehende Login-/Nachholregeln gelten unverändert; dauerhafte Queue-Arbeit wird wie in §6.6 beschrieben restauriert. Die Konfiguration wird vor
 jeder Queue-Aufnahme/Operation frisch geprüft. Unbestätigte Quellfreigabe bleibt `skipped`, ohne einen
-Server zu öffnen. Kein Agent-/XPC-/UI-Einstieg wurde damit produktiv aktiviert; SleepAssertion,
-Persistenz der Laufsteuerung und die signierten Systemnachweise bleiben offen.
+Server zu öffnen. Kein Agent-/XPC-/UI-Einstieg wurde damit produktiv aktiviert;
+Persistenz noch nicht angenommener Trigger-Evidenz und Retry-Ketten sowie die signierten Systemnachweise bleiben offen.
 
 - Jeder Lauf erzeugt einen `JobRun`-Eintrag in der Historie (Start, Ende, Ergebnis, Statistik, Snapshot-IDs, Fehlerliste,
   Verweis auf Kopia-Logdatei).
 - **Plausibilitätsprüfung nach dem Snapshot** („Ransomware-/Unfall-Wächter“): Fällt die Dateianzahl oder Gesamtgröße
   gegenüber dem vorherigen Snapshot derselben Quelle um > 50 % (konfigurierbar), Lauf als `succeededWithWarnings` markieren,
   den neuen Snapshot **pinnen** und eine kritische Mitteilung zeigen. Optional: Retention bis zur Bestätigung aussetzen.
+
+Implementierungsstand Batch 4b: Der gemeinsame manuelle/automatische Ausführungspfad vergleicht jede
+Quelle mit dem zeitlich neuesten vollständigen Manifest aus der vor Upload gelesenen exakten
+User-/Host-/Quellmenge. Ein fehlender Vorgänger benötigt keinen Vergleich; beschädigte vollständige
+Vorgängerdaten blockieren vor Upload. `PlanOptions.plausibilityDropPercent` ist von 1 bis 100 konfigurierbar,
+Standard und Decode-Fallback für ältere Konfigurationen sind 50. Verglichen werden Dateianzahl und
+Gesamtgröße getrennt mit strikter `>`-Grenze und überlaufsicheren Ganzzahlprodukten; 100 löst keinen
+Abfallalarm aus. Unvollständige Manifeste zählen nicht als Vorgänger.
+
+Ein auffälliges neues Manifest erhält ausschließlich den zusätzlichen Pin `mackopia-plausibility` über
+`POST /api/v1/snapshots/edit`. Kopia 0.23.1 ersetzt dabei die Manifest-ID; vorhandene Pins bleiben erhalten.
+Eine exakte Quellabfrage bestätigt neue ID, Root, Start-/Endzeit, Statistik und Pin. Bei verlorener
+Schreibantwort wird nur gelesen, kein Write wiederholt. Bestätigte neue IDs werden in der Historie
+gespeichert; fehlende Bestätigung ergänzt `snapshotPinFailed`, ohne einen Schutz zu behaupten. Der Lauf
+endet nach vollständigem Backup als `succeededWithWarnings`; Quelle und Lauf enthalten feste
+`suspiciousSnapshot`-Codes. Der Health-Pfad zeigt diese bzw. fehlgeschlagenes Pinning kritisch mit
+Aktivität als Folgeaktion. Bei nicht bestätigtem Pinning kann die letzte bekannte Manifest-ID bereits
+ersetzt sein; der weiterhin gespeicherte Root bleibt die Inhaltsreferenz.
+
+Pin-Versuch und Nachlesen bleiben unter der bestehenden Repo-/Volume-Reservierung und SleepAssertion;
+Caller-Abbruch wartet auf diese begrenzten HTTP-Aufrufe, erhält das Quellergebnis und beendet weitere
+Quellen. Der automatische Lauf liefert den kritischen Ereigniscode erst nach Cleanup und Queue-Freigabe,
+auch bei anschließendem Abbruch/Fehler. Betriebssystem-Mitteilungen folgen mit Agent-/UI-Komposition;
+ein automatisches Entpinnen oder Aussetzen der Aufbewahrung ist nicht implementiert.
 
 ### 7.6 Wartung & Prüfung
 
@@ -811,6 +896,43 @@ Persistenz der Laufsteuerung und die signierten Systemnachweise bleiben offen.
   wiederherstellen, SHA256 mit dem Original vergleichen (wenn unverändert laut mtime/size), Temp-Datei löschen.
   Ergebnis: „Wiederherstellung zuletzt erfolgreich getestet: <Datum>“ – das stärkste Vertrauenssignal für Nutzer.
 
+Implementierungsstand Batch 4c: `HistoryStore.recordVerification` speichert abgeschlossene
+Verify-/Test-Restore-Ergebnisse append-only mit Plan-/Ziel-UUID, Art, Start-/End-/Fälligkeitsdatum
+und festem Erfolg-/Fehlercode. Keine Pfade, Rohdiagnosen oder Secrets. Datumsfehler und doppelte IDs
+werden abgewiesen. Die SQLite-Migration erhält vorhandene Laufhistorie.
+`HistoryStore.latestVerification` liest den letzten Nachweis getrennt nach Art und exakter
+Plan-/Speicherziel-UUID bis zum angegebenen Zeitpunkt; damit bleibt auch Test-Restore-Evidenz
+nach Neustarts lesbar, ohne sie als Verify-Erfolg zu behandeln.
+`AutomaticBackupRuntime.health` liest den neuesten abgeschlossenen, nicht zukünftigen Verify-Nachweis
+in derselben Transaktion wie die Laufhistorie. Ein Test-Restore ersetzt keinen Verify-Nachweis.
+Gespeicherte Fehler bleiben kritisch bis zu einer zeitlich neueren erfolgreichen Prüfung; bei gleichem
+Enddatum gewinnt der Fehler. Ein aktueller beobachteter Fehler bleibt ebenfalls kritisch. Gespeicherte
+Fälligkeit kann durch flüchtige Erfolgsmeldungen nicht verlängert werden. Defekte Prüfhistorie macht
+die Historie unverfügbar und damit Health kritisch. Automatische Prüfausführung, persistente laufende
+Prüfabsichten, Test-Restore-Anzeige und Wartungskoordination bleiben offen.
+
+Implementierungsstand Batch 4d: `SnapshotVerificationEngine.verify` führt eine explizit angeforderte
+Prüfung des letzten erfolgreichen Backup-Laufs eines aktivierten Dateisystem-Plans aus. Sie verwendet
+denselben `BackupOperationCoordinator` und dieselbe `RepositoryOperationGate` wie Backups, einschließlich
+frischer Vorabprüfungen, UUID-Prüfung, Live-Laufwerksschutz und SleepAssertion während des Kindprozesses.
+Der Besitzer muss dieselbe Gate-Instanz für alle Operationen verwenden. ConfigStore wird nach dem
+Historienlesen und nach Ausführung erneut geprüft. Ohne vollständige Zuordnung zu allen aktuellen
+Quell-UUIDs oder ohne gültige Manifest-IDs startet kein Verify. Aktuell erfordert dieser konservative
+Pfad verfügbare Quellen samt Quellfreigabe; eine reine Offline-Speicherzielprüfung folgt separat.
+
+Der CLI-Aufruf prüft ausschließlich diese Manifest-IDs in Batches bis 128, mit Prozentwert 1–100
+(Standard 1), isolierter Config/Cache/Logs, Passwort ausschließlich in der Prozessumgebung,
+expliziter niedriger Priorität und sechs Stunden Timeout pro Batch. Kopia 0.23.1 prüft ohne Zielangaben
+das gesamte Speicherziel; leere, doppelte oder ungültige IDs werden daher vor Prozessstart abgewiesen.
+Alle Batches müssen Exit 0, JSON-`errorCount` 0 und positive Objektarbeit melden. Ein gespeicherter
+Erfolg entsteht erst nach Schutzbereinigung und erneuter Konfigurationsprüfung. Prozess-/Prüffehler
+speichern einen festen Fehlercode vor Rückgabe des bereinigten Fehlers; Prozessabbruch erzeugt keinen
+Prüfnachweis. Historienfehler bleiben Fehler. Fälligkeit ist standardmäßig sieben Tage, explizit
+konfigurierbar bis 31 Tage. Automatische Prüfauslösung, Plan-Optionen für Verify, dauerhafte laufende
+Prüfabsichten, Test-Restore-Ausführung und Wartungskoordination bleiben offen.
+Der Erfolgszeitpunkt wird bereits nach tatsächlichem Kommandoabschluss unter der Reservierung erfasst;
+verzögerte Schutzbereinigung oder Persistenz kann ihn nicht nachträglich hinter eine neuere Prüfung verschieben.
+
 ### 7.7 Health-Bewertung
 
 Pro Plan eine Ampel mit Begründung (in Übersicht, Menüleiste, Mitteilungen):
@@ -818,6 +940,23 @@ Pro Plan eine Ampel mit Begründung (in Übersicht, Menüleiste, Mitteilungen):
 - 🟡 Warnung: Lauf älter als `warnAfter`, Warnungen im letzten Lauf, Ziel > 90 % voll, Verify überfällig.
 - 🔴 Kritisch: älter als `criticalAfter`, Passwort fehlt/falsch, Verify fehlgeschlagen, FDA fehlt, Agent nicht erlaubt.
 Jede Meldung hat eine **konkrete Aktion** („Laufwerk anschließen“, „Passwort eingeben“, „Festplattenvollzugriff öffnen“).
+
+Implementierungsstand Batch 4a: `AutomaticBackupRuntime.health(planID:observations:)` liefert eine rein
+lesende Package-Abfrage mit festen `HealthAssessment`-Gründen, Schweregrad und Folgeaktionen. Die
+SQLite-Historie liest in einer konsistenten Transaktion den letzten abgeschlossenen und den letzten
+erfolgreichen Lauf für dieselbe Plan-/Speicherziel-UUID über den gesamten Bestand; laufende und zukünftige
+Ergebnisse gelten nicht als Erfolg. Health-Alter bezieht sich auf das Ende des erfolgreichen Laufs,
+Warn-/Kritisch-Schwellen gelten einschließlich der Grenze. Neuere Fehler verdecken weder den letzten
+Erfolg noch dessen Warnungen. Fehlende Erfolge warnen; fehlende/defekte Historie ist kritisch. Eine
+Konfigurationsänderung während der Abfrage verwirft das Ergebnis.
+
+Aktuelle Passwort-/FDA-/Dienst-Beobachtungen, Kapazität und Prüfergebnis werden typisiert vom Besitzer
+übergeben; die Abfrage löst keine Prozess-, Schlüsselbund- oder Dateizugriffsprobe aus. Ohne Prüfnachweis
+bleibt eine Warnung statt eines grünen Vertrauenssignals. Erfolgreiche Prüfungen enthalten Prüfzeit und
+Fälligkeit; zukünftige/ungültige Nachweise warnen, fehlgeschlagene Prüfungen sind kritisch. Die festen
+Codes enthalten keine Pfade, Secrets oder technischen Rohdiagnosen. Lokalisierte Darstellung,
+Mitteilungsversand, Ausführung von Verify/Test-Restore und Wartung sowie
+produktive Agent-/XPC-Komposition bleiben weitere Batch-4/5-Aufgaben.
 
 ---
 
@@ -1350,6 +1489,10 @@ Fehler-Mapping gehört in **eine** Datei mit Tests pro Zeile.
 
 | Datum | Entscheidung | Grund |
 |---|---|---|
+| 2026-10-25 | Explizites Verify zunächst auf exakte Manifest-IDs des letzten erfolgreichen Planlaufs unter gemeinsamer Backup-Sperre begrenzen | Kopia 0.23.1 prüft ohne Ziele das gesamte Speicherziel. Vollständige Quell-UUID-Zuordnung, nichtleere Ergebnisarbeit und persistente Evidenz verhindern einen leeren oder fremden Vertrauensnachweis; automatische Auslösung folgt separat |
+| 2026-10-25 | Abgeschlossene Verify-/Test-Restore-Ergebnisse in SQLite; Health liest Verify gemeinsam mit Laufhistorie | Prüfnachweise überleben Neustarts, sind an Plan und Speicherziel gebunden und enthalten nur feste Codes. Restore und Verify bleiben getrennt; ein gespeicherter Fehler darf nicht durch flüchtige Erfolgsbeobachtung verschwinden |
+| 2026-10-25 | Plausibilitätswächter pinnt auffällige neue Quellmanifeste additiv per REST und übernimmt die ersetzte ID erst nach exaktem Nachlesen; verlorene Antwort führt zu keiner Write-Wiederholung | Kopia 0.23.1 `handleEditSnapshots`/`snapshot.UpdateSnapshot` erzeugt eine neue Manifest-ID. Historie/Restore müssen diese verwenden; vorhandene Pins bleiben erhalten. Schwellwert 1–100 Prozent, Standard/Fallback 50, exakter strikter Vergleich; Pinfehler bleiben kritisch sichtbar. Keine automatische Entpinnung oder Aufbewahrungssperre |
+| 2026-10-25 | Health-Abfrage kombiniert dauerhafte Plan-/Zielhistorie mit typisierten aktuellen Beobachtungen; fehlende Prüfevidenz warnt, unlesbare Historie ist kritisch | Ohne Verify-Nachweis darf kein grünes Vertrauenssignal entstehen; getrennte Ein-/Ausgabe-Codes ermöglichen spätere lokalisierte Agent-/UI-Anbindung ohne Diagnose- oder Secret-Weitergabe |
 | 2026-10-24 | Control-Shutdown über den eigenen Prozessabschluss nachweisen; Transportfehler nie pauschal als Erfolg behandeln | CI reproduziert Antwortverlust trotz Shutdown. Kopia 0.23.1 startet [OnShutdown asynchron](https://github.com/kopia/kopia/blob/v0.23.1/internal/server/server.go); [Serve und Prozessende](https://github.com/kopia/kopia/blob/v0.23.1/cli/command_server_start.go) können der Antwort zuvorkommen. Client bleibt unverändert fehlschließend; Integration verlangt Ende vor Cleanup und Exit 0. |
 | 2026-10-24 | Manueller Dateisystem-Engine-Durchstich und GRDB 7.11.1 für dauerhafte Laufhistorie | Nutzer hat die GRDB-Abhängigkeit ausdrücklich freigegeben. §7.5 verbindet Queue/Config/Schutz, Policy-Abgleich, Server, Quellen und Historie; keine Agent-/TCC-Ausnahme. [Kopia 0.23.1](https://github.com/kopia/kopia/blob/v0.23.1/internal/server/api_snapshots.go) liefert ohne `all=true` nur nach Wurzel zusammengefasste Snapshots; vollständige Manifestliste verhindert falsche Fehlbewertung identischer Folgeläufe. Offene erweiterte Laufoptionen blockieren ausdrücklich. |
 | 2026-10-24 | Agent-Aufträge als vollständige Ausführungsbatches gemäß §14; Phasen bleiben Abnahmegates | Nutzer hat den Vorschlag größerer zusammenhängender Läufe zur Umsetzung freigegeben; weniger wiederholte Kontext-/Prüf-/Hand-off-Schritte, vollständige Verdrahtung pro Batch |
@@ -1413,6 +1556,16 @@ Fehler-Mapping gehört in **eine** Datei mit Tests pro Zeile.
 | 2026-10-24 | Zeitbegrenzte Pausen: absoluter Endzeitpunkt mit monotonem Timer | §6.6: Kalenderdatum für morgen 08:00, eindeutige Timerkennung, Wake-/Uhrzeitabgleich; Timerfehler hält Pause sichtbar statt unbeabsichtigt fortzusetzen. Laufzeitkomposition und Persistenz separat. |
 
 | 2026-10-25 | Gemeinsame automatische Package-Laufzeit vor Agent-Komposition | §7.5: ein serieller Engine-Besitzer, separate Queue-Beobachtung, gejointe Admission-Worker, planbezogene Evidenzversionen und terminaler Monitoring-Shutdown. Agent-/XPC-Freigabe und persistente Zustände bleiben separat. |
+
+| 2026-10-25 | Idle-Sleep-Schutz in gemeinsamer Engine-Ausführung | §7.4/§7.5: native IOPM-Assertion vor Serverstart, Freigabe nach Cleanup mittels defer mit atomarem Deinit-Fallback; Erwerbsfehler blockiert den Lauf. Kein Display-/Explizit-Sleep-Verbot. |
+
+| 2026-10-25 | Automatische Scheduler-Anker aus dauerhafter Erfolgshistorie | §7.3/§7.5: jüngster erfolgreicher Start je Plan und Ziel bis jetzt; vollständige Historie, fehlgeschlagene/offene Läufe ausgeschlossen; Lesefehler blockiert Start. Explizite Anker bleiben möglich. |
+
+| 2026-10-25 | Pausensperren vor Queue-Freigabe dauerhaft sichern und beim Start restaurieren | §6.6/§7.5: eigene versionierte Datei unter bestehendem Konfigurationsschutz; Zeitpunkte absolut, Timerfehler bleiben manuell lösbar. Speicherfehler verriegelt Ausführung; Shutdown erzeugt keine neue dauerhafte Pause. Wiederaufnahme alter Arbeit separat. |
+
+| 2026-10-25 | Expliziter Live-Konfigurationsreload innerhalb der automatischen Package-Laufzeit | §7.5: Queue-Entnahme während Abgleich gesperrt; geänderte Pläne/Ziele mit Cleanup abbrechen, unveränderte aktive Arbeit und Pausen erhalten. Frische Trigger-Evidenz, Retry-Reset und Historienanker; Abgleichfehler beenden Laufzeit. Kein Dateiwächter und keine produktive Agent-Freigabe. |
+
+| 2026-10-25 | Dauerhafte Queue-Absicht zusammen mit Pausen und transaktionale Historien-Crash-Abstimmung | §6.6/§7.5: Schema 2 mit Migration von Schema 1; neue Laufkennungen und frische Schutzprüfungen nach mindestens zwei Minuten. Stopp entfernt Absicht vor Abbruch; Historie behauptet keinen Erfolg nach Crash. Einzelner Runtime-Besitzer Voraussetzung; keine gemeinsame Transaktion zwischen SQLite und Steuerdatei. |
 
 ---
 

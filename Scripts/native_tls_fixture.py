@@ -70,6 +70,15 @@ def main():
             pass
 
         def do_POST(self):
+            if self.path == "/api/v1/snapshots/edit":
+                mark("pin-request")
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length)) if length <= 1024 else None
+                if (self.headers.get("Content-Type") != "application/json"
+                        or payload != {"snapshots": ["abc123"], "addPins": ["mackopia-plausibility"]}):
+                    mark("invalid-pin-body")
+                self.do_GET()
+                return
             if self.path.startswith(("/api/v1/sources/upload?", "/api/v1/sources/cancel?")):
                 length = int(self.headers.get("Content-Length", "0"))
                 payload = self.rfile.read(length) if length <= 1024 else None
@@ -177,6 +186,20 @@ def main():
                     body = f'<meta name="kopia-csrf-token" content="{csrf}">'.encode()
                     self.send_response(200)
                     self.send_header("Set-Cookie", f"Kopia-Session-Cookie={cookie}; Path=/; Secure; HttpOnly")
+                    self.send_header("Content-Length", str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                    return
+                if mode.startswith("pin-"):
+                    response = [{"id": "def456", "pins": ["mackopia-plausibility"]}]
+                    if mode == "pin-empty":
+                        response = []
+                    if mode == "pin-unpinned":
+                        response[0]["pins"] = []
+                    if mode == "pin-duplicate":
+                        response += response
+                    body = json.dumps(response).encode()
+                    self.send_response(200)
                     self.send_header("Content-Length", str(len(body)))
                     self.end_headers()
                     self.wfile.write(body)

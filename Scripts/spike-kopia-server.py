@@ -115,6 +115,23 @@ def execute(spike):
         if (destination / "empty").read_bytes() != b"":
             raise ProbeError("REST restore lost empty file")
         fixtures["rest-tasks.json"] = client.json("/api/v1/tasks")
+        latest = max(snapshots["snapshots"], key=lambda snapshot: snapshot["startTime"])
+        previously_pinned = client.json("/api/v1/snapshots/edit", method="POST", body={
+            "snapshots": [latest["id"]], "addPins": ["fixture-existing"],
+        })[0]
+        pinned = client.json("/api/v1/snapshots/edit", method="POST", body={
+            "snapshots": [previously_pinned["id"]], "addPins": ["mackopia-plausibility"],
+        })
+        after_pin = client.json(snapshot_path + "&all=true")["snapshots"]
+        if (len(pinned) != 1 or pinned[0]["id"] == previously_pinned["id"]
+                or pinned[0]["rootID"] != previously_pinned["rootID"]
+                or set(pinned[0]["pins"]) != {"fixture-existing", "mackopia-plausibility"}
+                or not any(s["id"] == pinned[0]["id"] for s in after_pin)
+                or any(s["id"] == previously_pinned["id"] for s in after_pin)):
+            raise ProbeError("Snapshot pin replacement contract changed")
+        fixtures["rest-snapshot-pin.json"] = {
+            "before": previously_pinned, "response": pinned, "after": after_pin,
+        }
         secrets = [spike.password, disabled.client.password, disabled.client.control_password,
                    client.password, client.control_password, client.session_cookie, client.csrf_token]
     if not server.clean_shutdown:

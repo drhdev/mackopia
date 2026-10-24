@@ -15,6 +15,7 @@ struct AutomaticRuntimeFixture: Sendable {
     let sessions: RuntimeSessions
     let history = RuntimeHistory()
     let issues = RuntimeIssues()
+    let files = MemoryConfigFiles()
     let store: ConfigStore
     let plan: BackupPlan
 
@@ -30,19 +31,22 @@ struct AutomaticRuntimeFixture: Sendable {
             retention: original.retention,
             excludes: original.excludes, options: original.options, health: original.health)
         sessions = RuntimeSessions(mode: mode)
-        store = ConfigStore(files: MemoryConfigFiles(), codec: try ConfigCodec())
+        store = ConfigStore(files: files, codec: try ConfigCodec())
         _ = try await store.load()
         try await store.save(BackupConfiguration(repositories: [base.repository], plans: [plan]))
     }
 
     func runtime(
+        historyOverride: (any JobHistoryRecording)? = nil,
+        monitorOverride: (any SystemEventMonitoring)? = nil,
         issue: (@Sendable (AutomaticBackupIssue) async -> Void)? = nil
     ) throws -> AutomaticBackupRuntime<SchedulerTestClock> {
         AutomaticBackupRuntime(
             store: store,
             coordinator: BackupOperationCoordinator(preflight: base.preflight, protection: ManualTestProtection()),
-            sessions: sessions, history: history, resolver: try TimeMachineExclusionResolver(), homeDirectory: "/Home",
-            loginDate: time.date, clock: time, now: { time.date }, monitor: monitor,
+            sessions: sessions, history: historyOverride ?? history, resolver: try TimeMachineExclusionResolver(),
+            homeDirectory: "/Home",
+            loginDate: time.date, clock: time, now: { time.date }, monitor: monitorOverride ?? monitor,
             reachability: RuntimeReachability(), jitter: { 0 }, issue: issue ?? { await issues.record($0) })
     }
 }

@@ -132,7 +132,10 @@ class Spike:
         restored_acl = subprocess.run(
             ["/bin/ls", "-le", str(restored)], env=self.tool_env, capture_output=True, text=True, timeout=10, check=True,
         ).stdout
-        self.run("snapshot", "verify", "--verify-files-percent=100")
+        verification = json.loads(self.run(
+            "snapshot", "verify", snapshot["id"], "--verify-files-percent=100", "--json"))
+        if verification["errorCount"] != 0 or verification["stats"]["processedObjectCount"] <= 0:
+            raise RuntimeError("Verify did not confirm nonempty successful work")
         if not cache.is_dir() or (self.working / "cache").exists():
             raise RuntimeError("Cache was not resolved relative to the isolated config")
         self.run("repository", "status", "--json")
@@ -168,6 +171,7 @@ class Spike:
         return {
             "cli-snapshot-create.json": self.scrub(snapshot),
             "cli-snapshot-list.json": self.scrub(snapshots),
+            "cli-snapshot-verify.json": self.scrub(verification),
             "metadata-report.json": {"version": version, "checks": checks},
         }
 

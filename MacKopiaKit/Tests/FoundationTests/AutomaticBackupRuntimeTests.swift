@@ -78,6 +78,8 @@ struct AutomaticBackupRuntimeTests {
         #expect(await service.closed)
         #expect(await service.cancellations == 1)
         #expect(await fixture.monitor.closed)
+        // Terminal state is committed before the asynchronous issue callback is delivered.
+        try await waitForRuntime { await fixture.issues.values == [.monitorUnavailable] }
         #expect(await fixture.issues.values == [.monitorUnavailable])
         await #expect(throws: CancellationError.self) { try await runtime.enqueue(planID: fixture.plan.id) }
         await runtime.shutdown()

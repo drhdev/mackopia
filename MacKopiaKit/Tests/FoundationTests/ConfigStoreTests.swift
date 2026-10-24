@@ -9,6 +9,7 @@ final class MemoryConfigFiles: ConfigFileSystem, ConfigFileAccess, Sendable {
     struct State {
         var primary: Data?
         var backup: Data?
+        var pauses: Data?
         var failingWrite: ConfigFile?
         var writes: [ConfigFile] = []
         var unavailable = false
@@ -21,7 +22,13 @@ final class MemoryConfigFiles: ConfigFileSystem, ConfigFileAccess, Sendable {
     }
 
     func read(_ file: ConfigFile) throws -> Data? {
-        state.withLock { file == .primary ? $0.primary : $0.backup }
+        state.withLock {
+            switch file {
+            case .primary: $0.primary
+            case .backup: $0.backup
+            case .pauses: $0.pauses
+            }
+        }
     }
 
     func replace(_ file: ConfigFile, with data: Data) throws {
@@ -31,6 +38,7 @@ final class MemoryConfigFiles: ConfigFileSystem, ConfigFileAccess, Sendable {
             switch file {
             case .primary: $0.primary = data;
             case .backup: $0.backup = data
+            case .pauses: $0.pauses = data
             }
         }
     }

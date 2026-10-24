@@ -2,6 +2,8 @@ import BackupDomain
 import Foundation
 import KopiaServer
 import Persistence
+import Synchronization
+import SystemIntegration
 import Testing
 
 @testable import BackupEngine
@@ -176,10 +178,50 @@ struct ManualBackupEngineTests {
         #expect(await history.final?.outcome == .failed)
     }
 
+    @Test(arguments: [ManualBackupService.Mode.normal, .uploadFailure, .cleanupFailure, .waitForCancellation])
+    func sleepProtectionSurvivesExecutionAndReleasesOnEveryExit(mode: ManualBackupService.Mode) async throws {
+        let fixture = try PreflightTestFixture()
+        let service = ManualBackupService(mode: mode)
+        let sleep = TestSleepPreventer()
+        let engine = try await engine(
+            fixture, service: service, history: ManualHistoryFixture(service: service), sleep: sleep)
+        _ = try await engine.enqueue(planID: fixture.plan.id)
+        let task = Task { try await engine.performNext() }
+        await service.waitUntilUpload()
+        if mode == .waitForCancellation {
+            #expect(sleep.active)
+            task.cancel()
+        }
+        let result = await task.result
+        if mode == .normal {
+            #expect(try result.get()?.outcome == .succeeded)
+        } else {
+            if case .success = result { Issue.record("Expected execution failure") }
+        }
+        #expect(await service.closed)
+        #expect(!sleep.active)
+        #expect(sleep.acquisitions == 1)
+    }
+
+    @Test func failedSleepProtectionBlocksServerAndFinishesFailedHistory() async throws {
+        let fixture = try PreflightTestFixture()
+        let service = ManualBackupService()
+        let history = ManualHistoryFixture(service: service)
+        let engine = try await engine(
+            fixture, service: service, history: history, sleep: TestSleepPreventer(fails: true))
+        _ = try await engine.enqueue(planID: fixture.plan.id)
+        await #expect(throws: BackupOperationError.operationFailed) { try await engine.performNext() }
+        #expect(await service.opened == false)
+        #expect(await history.final?.outcome == .failed)
+    }
+
     private func engine(
         _ fixture: PreflightTestFixture, service: ManualBackupService, history: ManualHistoryFixture,
-        queue: JobQueue = JobQueue(), plan: BackupPlan? = nil
+        queue: JobQueue = JobQueue(), plan: BackupPlan? = nil, sleep: any SleepPreventing = TestSleepPreventer()
     ) async throws -> ManualBackupEngine {
+        if let sleep = sleep as? TestSleepPreventer {
+            await service.setClosingCheck { #expect(sleep.active) }
+        }
         let store = ConfigStore(files: MemoryConfigFiles(), codec: try ConfigCodec())
         _ = try await store.load()
         try await store.save(BackupConfiguration(repositories: [fixture.repository], plans: [plan ?? fixture.plan]))
@@ -189,7 +231,7 @@ struct ManualBackupEngineTests {
                 coordinator: BackupOperationCoordinator(
                     preflight: fixture.preflight, protection: ManualTestProtection())),
             sessions: ManualSessionFactory(service: service), history: history,
-            resolver: try TimeMachineExclusionResolver(), homeDirectory: "/Home")
+            resolver: try TimeMachineExclusionResolver(), homeDirectory: "/Home", sleep: sleep)
     }
 }
 
@@ -239,10 +281,14 @@ actor ManualBackupService: KopiaBackupServing {
     var cancellations = 0
     var closed = false
     var opened = false
+    private var closingCheck: (@Sendable () -> Void)?
+    func setClosingCheck(_ check: @escaping @Sendable () -> Void) { closingCheck = check }
     private var waiting: [CheckedContinuation<Void, Never>] = []
     init(mode: Mode = .normal) { self.mode = mode }
     func markOpened() { opened = true }
+    func pinSnapshot(id: String) throws -> KopiaSnapshot { throw BackupOperationError.operationFailed }
     func close() throws {
+        closingCheck?()
         closed = true
         if mode == .cleanupFailure { throw BackupOperationError.operationFailed }
     }
@@ -308,4 +354,20 @@ actor ManualBackupService: KopiaBackupServing {
     private func decode<T: Decodable>(_ json: String) throws -> T {
         try JSONDecoder().decode(T.self, from: Data(json.utf8))
     }
+}
+
+private final class TestSleepPreventer: SleepPreventing, SleepAssertionHolding {
+    private let state = Mutex((active: false, acquisitions: 0))
+    let fails: Bool
+    init(fails: Bool = false) { self.fails = fails }
+    var active: Bool { state.withLock { $0.active } }
+    var acquisitions: Int { state.withLock { $0.acquisitions } }
+    func acquire() throws -> any SleepAssertionHolding {
+        if fails { throw SleepAssertionError.unavailable }
+        state.withLock {
+            $0.active = true; $0.acquisitions += 1
+        }
+        return self
+    }
+    func release() { state.withLock { $0.active = false } }
 }

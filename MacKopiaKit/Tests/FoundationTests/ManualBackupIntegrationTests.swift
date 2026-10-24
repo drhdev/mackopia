@@ -1,6 +1,7 @@
 import BackupDomain
 import BackupEngine
 import Foundation
+import KopiaServer
 import Persistence
 import Secrets
 import SystemIntegration
@@ -115,6 +116,22 @@ struct ManualBackupIntegrationTests {
                 #expect(result.files == 2)
             }
         }
+        try await verifyLatestIntegrationBackup(
+            plan: plan, repository: repository, store: store, preflight: preflight,
+            history: history, root: root, secrets: access)
+        let recoveryClock = SchedulerTestClock(date: .now)
+        let abandonedID = UUID()
+        try await history.begin(
+            JobRun(
+                id: abandonedID, planID: plan.id, repositoryID: repositoryID, trigger: .manual,
+                startedAt: recoveryClock.date, endedAt: recoveryClock.date, outcome: .running, sources: [], issues: []))
+        let controlState = store.pauseStore.makeSession()
+        _ = try controlState.load()
+        try controlState.saveWork([
+            StoredBackupWork(
+                id: abandonedID, planID: plan.id, repositoryID: repositoryID, trigger: .manual,
+                requestedAt: recoveryClock.date, state: .active)
+        ])
         let automatic = AutomaticBackupRuntime(
             store: store,
             coordinator: BackupOperationCoordinator(preflight: preflight, protection: LocalBackupOperationProtection()),
@@ -122,18 +139,61 @@ struct ManualBackupIntegrationTests {
                 executable: NativeKopiaFixture.binary, homeDirectory: root,
                 temporaryDirectory: root, user: "test-user", secrets: access),
             history: history, resolver: try TimeMachineExclusionResolver(), homeDirectory: root.path,
-            loginDate: .now, clock: ContinuousClock(), monitor: RuntimeMonitor(),
+            loginDate: recoveryClock.date, clock: recoveryClock, now: { recoveryClock.date }, monitor: RuntimeMonitor(),
             issue: { _ in Issue.record("Automatic drain unexpectedly reported a failure") })
         try await automatic.start()
-        try await automatic.enqueue(planID: plan.id)
+        try await waitForRuntime { recoveryClock.sleeperCount == 1 }
+        recoveryClock.advance(120)
         try await waitForRuntime(timeout: .seconds(30)) {
-            (try? await history.recent().filter { $0.outcome != .running }.count) == 3
+            recoveryClock.advance(1)
+            return (try? await history.recent().filter { $0.outcome == .succeeded }.count) == 3
         }
         await automatic.shutdown()
         #expect(await automatic.state == .stopped)
         let automaticRuns = try await history.recent()
-        #expect(automaticRuns.count == 3)
-        #expect(automaticRuns.allSatisfy { $0.outcome == .succeeded && $0.sources.count == 2 })
+        #expect(automaticRuns.count == 4)
+        #expect(automaticRuns.filter { $0.outcome == .succeeded && $0.sources.count == 2 }.count == 3)
+        #expect(automaticRuns.first { $0.id == abandonedID }?.issues == [.processInterrupted])
+        #expect(automaticRuns.first { $0.id == abandonedID }?.outcome == .cancelled)
+        _ = try controlState.load()
+        #expect(try controlState.loadWork().isEmpty)
+        // Generated source content only: a >50% size drop must protect the new manifests.
+        for source in sources {
+            try Data().write(to: URL(fileURLWithPath: source.path).appendingPathComponent("data.txt"))
+        }
+        _ = try await engine.enqueue(planID: plan.id)
+        let suspicious = try #require(try await engine.performNext())
+        #expect(suspicious.outcome == .succeededWithWarnings)
+        #expect(suspicious.issues == [.suspiciousSnapshot])
+        #expect(suspicious.sources.allSatisfy { $0.bytes == 0 && $0.files == 2 })
+        let inspection = try await FilesystemBackupSessions(
+            executable: NativeKopiaFixture.binary, homeDirectory: root, temporaryDirectory: root,
+            user: "test-user", secrets: access
+        ).open(repository: repository, options: plan.options)
+        do {
+            for result in suspicious.sources {
+                let source = try #require(sources.first { $0.id == result.sourceID })
+                let selector = try KopiaSnapshotSource(userName: "test-user", host: "test-host", path: source.path)
+                let snapshots = try #require(try await inspection.service.snapshotManifests(source: selector).snapshots)
+                let pinned = try #require(snapshots.first { $0.id == result.snapshotID })
+                #expect(pinned.rootID == result.rootID)
+                #expect(pinned.pins?.contains(KopiaServerClient.plausibilityPin) == true)
+                let restored = root.appendingPathComponent("restored-pinned-" + result.sourceID.uuidString)
+                let request = KopiaProcessRequest(
+                    executable: NativeKopiaFixture.binary,
+                    arguments: arguments + [
+                        "snapshot", "restore", result.snapshotID, restored.path,
+                        "--no-overwrite-files", "--no-overwrite-directories", "--no-overwrite-symlinks",
+                    ],
+                    environment: environment)
+                #expect(try await KopiaProcess().run(request).exitCode == 0)
+                #expect(try Data(contentsOf: restored.appendingPathComponent("data.txt")).isEmpty)
+            }
+            try await inspection.close()
+        } catch {
+            try? await inspection.close()
+            throw error
+        }
         let cancellation = CancellationSessionObservation()
         let cancelQueue = JobQueue()
         let cancelledEngine = ManualBackupEngine(
@@ -156,10 +216,11 @@ struct ManualBackupIntegrationTests {
         #expect(await cancelQueue.takeNext() != nil)
         let reopened = try HistoryStore(directory: historyDirectory)
         let runs = try await reopened.recent()
-        #expect(runs.count == 4)
+        #expect(runs.count == 6)
         #expect(runs.filter { $0.outcome == .succeeded && $0.sources.count == 2 }.count == 3)
-        #expect(runs.filter { $0.outcome == .cancelled }.count == 1)
-        #expect(Set(runs.flatMap(\.sources).map(\.snapshotID)).count == 6)
+        #expect(runs.filter { $0.outcome == .cancelled }.count == 2)
+        #expect(runs.first { $0.id == suspicious.id } == suspicious)
+        #expect(Set(runs.flatMap(\.sources).map(\.snapshotID)).count == 8)
         try assertNoPassword(root: root, password: password)
     }
 

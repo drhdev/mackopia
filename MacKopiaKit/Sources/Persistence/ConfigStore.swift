@@ -8,6 +8,7 @@ package enum ConfigLoadResult: Sendable, Equatable {
 
 /// Agent-owned persistence; never instantiate from an app view or write configuration through XPC directly.
 package actor ConfigStore {
+    package nonisolated let pauseStore: BackupPauseStore
     private let files: any ConfigFileSystem
     private let codec: ConfigCodec
     private var state: ConfigLoadResult?
@@ -15,10 +16,12 @@ package actor ConfigStore {
 
     package init(directory: URL) throws {
         files = try LocalConfigFileSystem(directory: directory)
+        pauseStore = BackupPauseStore(files: files)
         codec = try ConfigCodec()
     }
 
     init(files: any ConfigFileSystem, codec: ConfigCodec) {
+        pauseStore = BackupPauseStore(files: files)
         self.files = files
         self.codec = codec
     }

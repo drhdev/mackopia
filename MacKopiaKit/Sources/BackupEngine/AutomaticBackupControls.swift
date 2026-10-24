@@ -1,5 +1,6 @@
 import BackupDomain
 import Foundation
+import Persistence
 import SystemIntegration
 
 extension AutomaticBackupRuntime {
@@ -10,11 +11,7 @@ extension AutomaticBackupRuntime {
             }
         }
         try await control(planID: planID) {
-            if let until {
-                try await self.queue.pause(planID: planID, until: until)
-            } else {
-                await self.queue.pause(planID: planID)
-            }
+            try await self.queue.pausePersistently(planID: planID, until: until)
         }
     }
 
@@ -32,6 +29,9 @@ extension AutomaticBackupRuntime {
 
     func control(planID: UUID?, operation: @Sendable () async throws -> Void) async throws {
         guard state == .running else { throw SystemMonitoringError.unavailable }
+        if let planID, configuration?.plans.contains(where: { $0.id == planID }) != true {
+            throw DomainValidationError.invalidPlan
+        }
         guard controls.isEmpty, monitorTask != nil else { throw RepositoryOperationError.repositoryBusy }
         let id = UUID()
         controls[planID] = id
@@ -49,6 +49,7 @@ extension AutomaticBackupRuntime {
         do {
             guard state == .running, controls[planID] == id else { throw CancellationError() }
             try await operation()
+            if await queue.pausePersistenceFailed { throw ConfigStoreError.storageUnavailable }
         } catch {
             await finishControl(planID: planID, id: id)
             throw error
@@ -100,6 +101,12 @@ extension AutomaticBackupRuntime {
         for (id, worker) in workers where id != AutomaticAdmissionWorker.id { _ = await worker.1.result }
     }
 
+    func controlStateFailed() async {
+        guard state == .running else { return }
+        await shutdown()
+        await issue(.controlStateUnavailable)
+    }
+
     /// Idempotent joining shutdown, including monitor failure and callbacks from owned workers.
     package func shutdown() async { await shutdown(failed: false) }
 
@@ -121,6 +128,9 @@ extension AutomaticBackupRuntime {
         let monitorWorker = monitorTask
         let drainWorker = drainTask
         let queueWorker = queueTask
+        recoveryTask?.cancel()
+        if AutomaticWorker.kind != .recovery { await recoveryTask?.value }
+        await queue.detachPausePersistence()
         monitorWorker?.cancel()
         drainWorker?.cancel()
         queueWorker?.cancel()
@@ -129,7 +139,11 @@ extension AutomaticBackupRuntime {
         if AutomaticWorker.kind != .monitor { await monitorWorker?.value }
         if AutomaticWorker.kind != .drain { await drainWorker?.value }
         if AutomaticWorker.kind != .queue { await queueWorker?.value }
-        state = failed ? .monitorUnavailable : .stopped
+        if await queue.pausePersistenceFailed {
+            state = .controlStateUnavailable
+        } else {
+            state = failed ? .monitorUnavailable : .stopped
+        }
     }
 }
 

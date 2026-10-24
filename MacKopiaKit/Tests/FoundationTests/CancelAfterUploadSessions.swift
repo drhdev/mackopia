@@ -29,6 +29,7 @@ private struct CancelAfterUploadService: KopiaBackupServing {
     let base: any KopiaBackupServing
     let observation: CancellationSessionObservation
     func repositoryStatus() async throws -> KopiaRepositoryStatus { try await base.repositoryStatus() }
+    func pinSnapshot(id: String) async throws -> KopiaSnapshot { try await base.pinSnapshot(id: id) }
     func sources() async throws -> KopiaSources { try await base.sources() }
     func snapshotManifests(source: KopiaSnapshotSource) async throws -> KopiaSnapshots {
         try await base.snapshotManifests(source: source)

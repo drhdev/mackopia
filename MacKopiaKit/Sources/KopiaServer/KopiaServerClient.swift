@@ -82,6 +82,25 @@ package actor KopiaServerClient: KopiaBackupServing {
         try await changeUpload(.cancelUpload(source), source: source)
     }
 
+    package func pinSnapshot(id: String) async throws -> KopiaSnapshot {
+        let validID: (String) -> Bool = { value in
+            !value.isEmpty && value.utf8.count <= 128
+                && value.utf8.allSatisfy { (48...57).contains($0) || (97...102).contains($0) }
+        }
+        guard validID(id) else { throw KopiaServerClientError.invalidRequest }
+        struct Request: Encodable { let snapshots: [String]; let addPins: [String] }
+        // Kopia 0.23.1: pinning replaces the manifest ID; callers must use the returned snapshot.
+        let body = try JSONEncoder().encode(Request(snapshots: [id], addPins: [Self.plausibilityPin]))
+        let data = try await read(.editSnapshots, method: "POST", body: body)
+        guard let snapshots = try? JSONDecoder().decode([KopiaSnapshot].self, from: data),
+            snapshots.count == 1, let snapshot = snapshots.first,
+            let newID = snapshot.id, validID(newID), snapshot.pins?.contains(Self.plausibilityPin) == true
+        else { throw KopiaServerClientError.response }
+        return snapshot
+    }
+
+    package static let plausibilityPin = "mackopia-plausibility"
+
     private func changeUpload(_ route: KopiaServerRoute, source: KopiaSnapshotSource) async throws {
         struct Result: Decodable { let success: Bool? }
         struct Response: Decodable { let sources: [String: Result]? }

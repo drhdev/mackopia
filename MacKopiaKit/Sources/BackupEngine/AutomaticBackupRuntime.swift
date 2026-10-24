@@ -3,10 +3,14 @@ import Foundation
 import Persistence
 import SystemIntegration
 
-/// One monitoring session and one serial engine owner. Shutdown is terminal; create a new runtime
-/// after configuration reload. This package boundary does not grant source access or register an agent.
+/// One monitoring session and one serial engine owner, with explicit configuration reload.
+/// This package boundary does not grant source access or register an agent. Shutdown is terminal.
 package actor AutomaticBackupRuntime<C: Clock> where C.Duration == Duration {
     package internal(set) var state: AutomaticBackupState = .idle
+    let historySchedule: (any JobHistoryScheduleReading)?
+    let historyRecovery: (any JobHistoryRecovering)?
+    let historyHealth: (any JobHistoryHealthReading)?
+    var recoveryTask: Task<Void, Never>?
     let store: ConfigStore
     let queue: JobQueue
     let runner: ConfiguredJobRunner
@@ -72,8 +76,11 @@ package actor AutomaticBackupRuntime<C: Clock> where C.Duration == Duration {
         jitter: @escaping @Sendable () -> Double = { .random(in: -60...60) },
         issue: @escaping @Sendable (AutomaticBackupIssue) async -> Void
     ) {
+        historySchedule = history as? any JobHistoryScheduleReading
+        historyRecovery = history as? any JobHistoryRecovering
+        historyHealth = history as? any JobHistoryHealthReading
         self.store = store
-        let queue = JobQueue(clock: clock, now: now)
+        let queue = JobQueue(clock: clock, now: now, pausePersistence: store.pauseStore.makeSession())
         self.queue = queue
         let runner = ConfiguredJobRunner(store: store, queue: queue, coordinator: coordinator)
         self.runner = runner
@@ -90,8 +97,8 @@ package actor AutomaticBackupRuntime<C: Clock> where C.Duration == Duration {
         self.issue = issue
     }
 
-    /// History anchors are supplied explicitly; no guessed success or crash resumption.
-    package func start(lastRuns: [UUID: Date] = [:]) async throws {
+    /// Durable history supplies anchors by default; explicit values support controlled replay/tests.
+    package func start(lastRuns: [UUID: Date]? = nil) async throws {
         guard state == .idle else { throw SystemMonitoringError.unavailable }
         state = .starting
         generation &+= 1
@@ -100,7 +107,28 @@ package actor AutomaticBackupRuntime<C: Clock> where C.Duration == Duration {
             let configuration = try await store.currentConfiguration()
             try Task.checkCancellation()
             guard state == .starting, generation == version else { throw CancellationError() }
-            try await scheduler.replace(plans: configuration.plans, lastRuns: lastRuns)
+            let anchors: [UUID: Date]
+            if let lastRuns {
+                anchors = lastRuns
+            } else if let historySchedule {
+                anchors = try await historySchedule.scheduleAnchors(plans: configuration.plans, before: now())
+            } else {
+                anchors = [:]
+            }
+            try Task.checkCancellation()
+            guard state == .starting, generation == version else { throw CancellationError() }
+            try await queue.restorePauses(planIDs: Set(configuration.plans.map(\.id)))
+            try Task.checkCancellation()
+            guard state == .starting, generation == version else { throw CancellationError() }
+            let work = try await queue.recoveryWork()
+            let completed =
+                try await historyRecovery?.reconcileInterrupted(at: now(), workIDs: Set(work.map(\.id))) ?? []
+            try Task.checkCancellation()
+            guard state == .starting, generation == version else { throw CancellationError() }
+            let recovering = try await queue.restoreWork(work, configuration: configuration, completed: completed)
+            try Task.checkCancellation()
+            guard state == .starting, generation == version else { throw CancellationError() }
+            try await scheduler.replace(plans: configuration.plans, lastRuns: anchors)
             await events.replace(configuration: configuration)
             guard state == .starting, generation == version else {
                 await events.stop()
@@ -110,6 +138,7 @@ package actor AutomaticBackupRuntime<C: Clock> where C.Duration == Duration {
             self.configuration = configuration
             eventConfiguration = configuration
             state = .running
+            await refreshEvents(version: controlVersion)
             await startScheduler()
             try Task.checkCancellation()
             guard state == .running, generation == version else { return }
@@ -133,6 +162,7 @@ package actor AutomaticBackupRuntime<C: Clock> where C.Duration == Duration {
                     }
                 }
             }
+            if recovering { startRecoveryDelay() }
         } catch {
             if generation == version, state == .starting || state == .running { await shutdown() }
             throw error
@@ -140,7 +170,7 @@ package actor AutomaticBackupRuntime<C: Clock> where C.Duration == Duration {
     }
 
     func startScheduler() async {
-        guard state == .running else { return }
+        guard state == .running, controls.isEmpty else { return }
         let version = controlVersion
         await scheduler.start { [weak self] request in
             await AutomaticWorker.$kind.withValue(nil) { await self?.scheduled(request, version: version) }
@@ -168,6 +198,10 @@ package actor AutomaticBackupRuntime<C: Clock> where C.Duration == Duration {
 
     func queueChanged(_ pauseRevision: UInt64) async {
         guard state == .running else { return }
+        if await queue.pausePersistenceFailed {
+            await controlStateFailed()
+            return
+        }
         if observedPauseRevision != pauseRevision {
             observedPauseRevision = pauseRevision
             controlVersion &+= 1
@@ -186,7 +220,9 @@ package actor AutomaticBackupRuntime<C: Clock> where C.Duration == Duration {
         while state == .running, !Task.isCancelled {
             let version = workRevision
             do {
-                let run = try await engine.performNext { [weak self] job, result in
+                let run = try await engine.performNext(suspiciousSnapshot: { [weak self] run in
+                    await self?.issue(.suspiciousSnapshot(planID: run.planID, runID: run.id))
+                }) { [weak self] job, result in
                     await self?.finished(job, result: result)
                 }
                 if run == nil, workRevision == version { return }
@@ -231,6 +267,6 @@ package actor AutomaticBackupRuntime<C: Clock> where C.Duration == Duration {
 }
 
 enum AutomaticWorker {
-    enum Kind: Sendable { case drain, monitor, queue }
+    enum Kind: Sendable { case drain, monitor, queue, recovery }
     @TaskLocal static var kind: Kind?
 }

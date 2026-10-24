@@ -10,4 +10,4 @@ protocol ConfigFileSystem: Sendable {
     func withLock<T>(_ operation: (any ConfigFileAccess) throws -> T) throws -> T
 }
 
-enum ConfigFile: String { case primary = "config.json", backup = "config.json.bak" }
+enum ConfigFile: String { case primary = "config.json", backup = "config.json.bak", pauses = "pauses.json" }
