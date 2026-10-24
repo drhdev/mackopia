@@ -484,7 +484,8 @@ Dateigrößenlimit (dezimal MB → Int64-Bytes, überlaufgeprüft) und Dateisyst
 kein serialisierbarer Kopia-Schreibbody. Vererbungssteuerung und Erhalt fremder Policy-Felder gehören zum
 späteren Schreibabgleich. Aktivierte macOS-/Time-Machine-Ausschlussquellen verlangen explizit für diese Quelle
 aufgelöste Musterlisten; nil ist unaufgelöst und blockiert, eine leere Liste ist ein gültiges Ergebnis ohne Treffer.
-Die Resolver selbst bleiben offen. Reihenfolge: macOS, Time Machine, benutzerdefinierte Muster; keine Sortierung
+Die macOS-Standardliste ist als rein lexikalischer Baustein verfügbar; Dateisystem-/Time-Machine-Resolver
+und deren Anbindung bleiben offen. Reihenfolge: macOS, Time Machine, benutzerdefinierte Muster; keine Sortierung
 oder Deduplizierung, damit Negationen und wiederholte Regeln erhalten bleiben. Für die kombinierte Liste gelten
 dieselben Größen-/Textgrenzen wie für gespeicherte Muster. Keine I/O-, Scheduling- oder Löschaktion.
 
@@ -581,6 +582,17 @@ Export/Import sowie UI-/Agent-Anbindung folgen separat.
 ```
 
 - `JobQueue` ist ein Actor; ein Job = (Plan, Trigger, Zeitpunkt). Doppelte Jobs desselben Plans werden zusammengefasst.
+
+Der zunächst eigenständige Queue-Baustein hält unveränderliche Planstände und arbeitet FIFO nach Eingang,
+nicht nach dem übergebenen Zeitpunkt (dieser ist Ereigniszeit, kein Fälligkeitstimer). Zusammenfassen erhält
+FIFO-Position, ersten Trigger und Zeitpunkt; der jüngste Planstand ersetzt den vorgemerkten Plan. Während
+ein Plan aktiv ist, wird höchstens ein weiterer Auftrag dafür vorgemerkt. Andere Pläne können vorher
+entnommen werden; derselbe Plan bleibt bis zum bestätigten Abschluss gesperrt. Abschluss benötigt die
+konkrete Laufkennung, damit verspätete Rückmeldungen keinen neueren Lauf freigeben. Die Engine muss
+Abschluss erst nach vollständigem Operations-Cleanup melden und Planfreigabe, aktuellen ConfigStore-Stand
+sowie Repository-Sperre beim Start erneut prüfen. Die Queue startet selbst keine Prozesse; Scheduler,
+Retry, Historie, persistente Wiederaufnahme und Agent-Anbindung bleiben separat offen.
+
 - **Retry-Strategie** bei transienten Fehlern (Netzwerk, Timeout, Ziel kurz weg): exponentiell 1 → 5 → 15 Min.,
   max. 3 Versuche, danach `failed` + Mitteilung. Nicht-transiente Fehler (falsches Passwort, Repo nicht gefunden,
   Berechtigung) → sofort `failed`, kein Retry.
@@ -864,6 +876,17 @@ Library/Mobile Documents/        Library/CloudStorage/         # siehe iCloud-Fa
 *.tmp                            *.swp
 ```
 - `ignoreCacheDirs` → Kopia-Policy „Cache-Verzeichnisse ignorieren“ (`CACHEDIR.TAG`).
+
+`MacOSExclusionPatterns` Version 1 erzeugt diese verpflichtenden Muster rein lexikalisch mit explizit
+übergebenem Home-Verzeichnis des gesicherten Benutzers. Home-bezogene Library-Regeln werden nach
+Pfadkomponenten auf die Quelle projiziert und mit `/` an deren Wurzel verankert; fremde Quellen erhalten
+sie nicht. Liegt die Quelle selbst in einem ausgeschlossenen Home-Unterbaum, liefert der Baustein explizit
+`**` (alle Einträge ausgeschlossen). Glob-Zeichen in echten Pfadkomponenten werden maskiert; nur das
+fest definierte Containers-Segment bleibt ein Wildcard. Universelle Namensregeln bleiben rekursiv.
+Optionale MobileSync-/Entwickler-Schalter sind noch nicht modelliert und werden nicht aktiviert.
+Keine Dateisystemzugriffe, Symlink-/Volume-Prüfung, Time-Machine-Abfrage, Cache oder automatische
+Policy-Übertragung; der Aufrufer muss Quellidentität und Aktualität weiterhin sicherstellen.
+
 - `honorTimeMachineExclusions` → beim Policy-Abgleich die Quelle flach bis Tiefe 3 nach `URLResourceKey.isExcludedFromBackupKey`
   scannen (plus `tmutil`-Sticky-Exclusions via `com_apple_backup_excludeItem`-xattr) und als Ignore-Regeln übernehmen.
   Scan im Hintergrund mit Limit (max. 10 s), Ergebnis cachen.
@@ -1091,6 +1114,8 @@ Fehler-Mapping gehört in **eine** Datei mit Tests pro Zeile.
 
 | Datum | Entscheidung | Grund |
 |---|---|---|
+| 2026-10-24 | macOS-Standardmuster Version 1 werden quellbezogen projiziert und an der Quellwurzel verankert | Verhindert Ausschlüsse gleichnamiger Library-Verzeichnisse außerhalb des übergebenen Home. Quellen innerhalb ausgeschlossener Home-Unterbäume liefern explizit `**`; optionale Regeln und Dateisystem-/Time-Machine-Auflösung bleiben separat. |
+| 2026-10-24 | Eigenständige In-Memory-JobQueue mit FIFO, zusammengefassten Planaufträgen und kennungsgebundenem Abschluss | Wartende Aufträge erhalten den jüngsten Planstand; aktive Läufe bleiben unverändert. Ein Folgeauftrag pro aktivem Plan bleibt möglich, verspäteter Abschluss entsperrt keinen neueren Lauf. Ausführung, ConfigStore-Abgleich und Repository-Sperre bleiben separat. |
 | 2026-10-24 | Reine Policy-Übersetzung liefert nur planverwaltete Sollwerte; aktivierte Ausschlussresolver müssen explizite Ergebnisse liefern | Kein unvollständiger PUT-Body und kein stiller Wegfall aktivierter macOS-/Time-Machine-Regeln. Reihenfolge und Negationen bleiben erhalten; Resolver, Vererbungssteuerung und Schreibabgleich folgen separat. |
 | 2026-10-23 | Hybrid-Integration: `kopia server` (lokal, TLS-Pinning) + CLI `--json` | Strukturierter Fortschritt, Abbruch, Browsing |
 | 2026-10-23 | Engine-Vorabprüfung trennt blockierende Zielprobleme von übersprungenen Quellen; fehlende Beobachtung erfüllt keine Bedingung | §9 präzisiert Pfad-/Volume-Teilprüfung, Überschneidungen, Fallunterscheidung und temporär nicht auswertbare WLAN-Bedingung; keine Job-Startfreigabe oder neue Systemrechte. |
