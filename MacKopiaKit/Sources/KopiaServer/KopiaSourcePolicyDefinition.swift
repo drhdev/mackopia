@@ -6,5 +6,10 @@ package struct KopiaSourcePolicyDefinition: Sendable, CustomReflectable {
     package let source: KopiaSnapshotSource
     package let document: KopiaPolicyDocument
 
+    package init(source: KopiaSnapshotSource, document: KopiaPolicyDocument) {
+        self.source = source
+        self.document = document
+    }
+
     package var customMirror: Mirror { Mirror(self, children: ["sourcePolicyDefinition": "<private>"]) }
 }

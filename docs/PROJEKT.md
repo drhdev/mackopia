@@ -463,31 +463,34 @@ Schlüsselbund-Referenzen werden mit der späteren Engine-Anbindung ergänzt; `R
 Ein Dateisystem-Ziel ohne gebundene Volume-Identität ist lediglich vorbereitete Konfiguration und darf nicht geöffnet werden.
 
 **Policy-Übersetzung (`PolicyTranslator`)**: Retention, Excludes und Compression werden **pro Quelle** als Kopia-Policy
-gesetzt (idempotent, vor jedem Lauf abgeglichen, wenn sich der Plan-Hash geändert hat). Gehören zwei Pläne zur gleichen
+gesetzt (idempotent, vor jedem Lauf frisch abgeglichen). Ein Plan-Hash allein genügt nicht: vererbte Policies und
+aufgelöste Ausschlüsse können sich unabhängig davon ändern. Gehören zwei Pläne zur gleichen
 Quelle im selben Repo, ist das ein Validierungsfehler im Editor (sonst würden sich die Policies überschreiben).
 
 Der native Serverclient liest quellbezogene Definitionen mit `GET /api/v1/policy` und berechnet die effektive
 Policy mit `POST /api/v1/policy/resolve`. Beide verlangen die vollständige Identität `userName`/`host`/`path`
 und verwenden denselben gepinnten TLS-/CSRF-Transport wie die übrigen Lesezugriffe. Der POST-Body ist fest
-auf `numUpcomingSnapshotTimes: 0` begrenzt, enthält keine `updates` und setzt keine Kopia-Zeitpläne.
+auf `numUpcomingSnapshotTimes: 0` begrenzt. Der reine Lesepfad enthält keine `updates`; der Schreibabgleich
+kann zusätzlich eine vollständige lokale Definition als `updates` zur nichtpersistierenden Vorschau senden.
+Keiner der Pfade setzt Kopia-Zeitpläne.
 Kopia 0.23.1 meldet eine fehlende Definition mit HTTP 400 und Code `NOT_FOUND`; ausschließlich diese Kombination
 beim Definitionsabruf ergibt `nil`. Andere Fehler und übergroße Antworten bleiben Fehler. Typisierte, nur
 decodierbare Projektionen lesen Aufbewahrung, Dateiregeln, Kompression sowie deren Vererbungsursprünge;
 fehlend, null, 0 und false werden nicht durch vermeintliche Standardwerte ersetzt. Globale Ursprünge dürfen
 leere Identitätskomponenten enthalten. Unbekannte Felder werden ignoriert; diese unvollständigen Projektionen
 dürfen niemals zum Zurückschreiben einer Policy verwendet werden. Ein vollständiger lokaler Policy-Merge-Baustein
-ist separat verfügbar; HTTP-Schreibabgleich und Agent-Anbindung bleiben weiterhin offen; kein automatisches Anwenden oder Löschen von Backups in diesem Lesepfad.
+ist separat verfügbar; der explizite Engine-Schreibabgleich ist unten beschrieben. Die Agent-Anbindung bleibt
+offen; kein automatisches Anwenden oder Löschen von Backups in diesem Lesepfad.
 
 `PolicyTranslator` übersetzt rein und deterministisch die planverwalteten Werte für eine vollständig im Plan
 enthaltene Quelle: Aufbewahrung einschließlich nil/0, Kompression, Ausschlussmuster, Cache-Verzeichnisse,
 Dateigrößenlimit (dezimal MB → Int64-Bytes, überlaufgeprüft) und Dateisystemgrenze. Das Ergebnis ist bewusst
 kein serialisierbarer Kopia-Schreibbody. Vererbungssteuerung und Erhalt fremder Policy-Felder gehören zum
-späteren Schreibabgleich. Aktivierte macOS-/Time-Machine-Ausschlussquellen verlangen explizit für diese Quelle
+separaten Schreibabgleich. Aktivierte macOS-/Time-Machine-Ausschlussquellen verlangen explizit für diese Quelle
 aufgelöste Musterlisten; nil ist unaufgelöst und blockiert, eine leere Liste ist ein gültiges Ergebnis ohne Treffer.
 Die macOS-Standardliste ist als rein lexikalischer Baustein und der Time-Machine-Resolver als expliziter
-Dateisystemadapter verfügbar; deren produktive Anbindung bleibt offen. Reihenfolge: macOS, Time Machine,
-benutzerdefinierte Muster; keine Sortierung
-oder Deduplizierung, damit Negationen und wiederholte Regeln erhalten bleiben. Für die kombinierte Liste gelten
+Dateisystemadapter verfügbar und im expliziten `SourcePolicySynchronizer` verbunden; die Agent-Anbindung
+bleibt offen. Reihenfolge: macOS, Time Machine, benutzerdefinierte Muster; keine Sortierung oder Deduplizierung, damit Negationen und wiederholte Regeln erhalten bleiben. Für die kombinierte Liste gelten
 dieselben Größen-/Textgrenzen wie für gespeicherte Muster. Keine I/O-, Scheduling- oder Löschaktion.
 
 `policyDefinition(source:)` liest zusätzlich die vollständige lokale Definition über denselben gepinnten
@@ -503,8 +506,30 @@ planverwaltete Felder und erhält übrige Felder sowie bestehende Scheduling-Wer
 entfernt den lokalen Override, 0 bleibt explizit. Der Baustein führt keine HTTP-Schreibzugriffe aus und bestätigt
 keine effektive Policy: Kopia 0.23.1 erbt leere Ignore-Listen und maxFileSize 0 weiterhin, unabhängig von
 `noParentIgnore`; dieses Flag beeinflusst die Verzeichnistraversierung. Root-`noParent` bleibt unverändert,
-damit fremde Vererbung erhalten bleibt. Vor einem späteren Writer sind effektive Regeln und deaktiviertes
-Kopia-Scheduling zusätzlich zu prüfen. Reine lokale Idempotenz ersetzt diesen Nachweis nicht.
+damit fremde Vererbung erhalten bleibt. Der Writer prüft effektive Regeln und deaktiviertes
+Kopia-Scheduling zusätzlich. Reine lokale Idempotenz ersetzt diesen Nachweis nicht.
+
+`SourcePolicySynchronizer` führt innerhalb einer geschützten Repository-Operation den vollständigen
+quellbezogenen Abgleich aus: frische optionale macOS-/Time-Machine-Auflösung → vollständige Definition
+lesen → lokale Definition mergen → effektive Vorschau mit `updates` → Sollwerte und inaktives Scheduling
+prüfen → Vorschau und lokale Definition erneut lesen → bei Bedarf `PUT /api/v1/policy` → gespeicherte
+Definition und tatsächlich effektive Policy erneut prüfen. Ein zweiter identischer Abgleich schreibt nicht.
+Retention-nil erbt weiterhin; explizite 0/false bleiben erhalten. Leere Ausschlüsse bzw. fehlendes Größenlimit,
+die durch Vererbung nicht wirksam werden, blockieren vor dem Schreiben. Scheduling wird weder gesetzt
+noch entfernt; vorhandene aktive Zeitpläne blockieren. Time-Machine-Ergebnisse müssen auch unmittelbar
+vor dem Schreiben und bei Abschluss noch quellgebunden und höchstens 60 Sekunden alt sein.
+
+Ein Synchronizer gehört zu genau einer Repository-Sitzung; parallele Aufrufe derselben Instanz werden
+abgewiesen. Der Aufrufer hält die vorhandene Repository-/Volume-Reservierung und verhindert weitere
+MacKopia-Schreibzugriffe bis zum Ende. Kopia 0.23.1 bietet jedoch keinen bedingten PUT, ETag oder
+Revisionstoken: erneute Leseprüfungen erkennen beobachtete lokale und effektive Änderungen, sind aber
+keine atomare Sperre gegen externe Kopia-Clients. Nachprüfungen dürfen keine automatische Rückschreibung
+oder blinde Wiederholung auslösen. Fehler/Abbruch während oder nach PUT bedeuten gegebenenfalls einen
+ungeklärten Schreibausgang; vor dem nächsten Versuch wird frisch gelesen. Fremde JSON-Felder bleiben
+im übertragenen Dokument erhalten; verwirft der gepinnte Server unbekannte Felder, schlägt die
+Definitionsnachprüfung fehl. Es gibt keine Zusage, dass Kopia unbekannte Erweiterungen persistiert.
+Der Abgleich startet keine Snapshots und führt keine Aufbewahrungs-/Löschaktion aus; die produktive
+Job-/Agent-Verdrahtung folgt im nächsten Batch.
 
 Plan-Metadaten werden auch beim Decoding validiert: nichtleere Quellen-/Triggerlisten, eindeutige Quell-IDs
 und wörtliche Quellpfade pro Plan, gültige Uhrzeiten/Wochentage, positive Intervalle und geordnete positive
@@ -1063,6 +1088,36 @@ Konfiguration `.swift-format` im Repo) als Pflicht-Check.
 > Jede Phase endet mit grünen Tests, lauffähigem Build und einem kurzen Eintrag im Entscheidungslog (Abschnitt 17).
 > **Reihenfolge einhalten**: Die Engine wird vor der UI fertig und getestet (UI ist austauschbar, Datenverlust nicht).
 
+### Ausführungsbatches für Coding-Agents
+
+Die Phasen bleiben fachliche Abnahmekriterien. Implementierungsaufträge bündeln mehrere zusammenhängende
+Bausteine zu einem vollständig verdrahteten, prüfbaren Verhalten. Ein Batch umfasst Implementierung,
+Integration, Fehler-/Abbruchpfade, aussagekräftige Tests und Status-/Hand-off-Notiz. Kein Abschluss nur
+mit einem weiteren unverbundenen Adapter. Bestehende geprüfte Bausteine werden wiederverwendet.
+
+| Batch | Zusammenhängender Auftrag | Abnahme des Agent-Laufs |
+|---|---|---|
+| 1 – Policy-Abgleich | Vollständiger Lese-/Merge-/Schreibpfad, effektive Vererbung, Scheduling-Prüfung, Konflikterkennung, Ausschlussresolver | Echte temporäre Kopia-Integration; zweiter Abgleich ohne Write; Konflikte und unwirksame Sollwerte blockieren |
+| 2 – Manueller Backup-Engine-Durchstich | Queue/Preflight/Schutz, Server-Lifecycle, sequenzielle Quellen, Fortschritt/Abbruch, Historie | Zwei Quellen → Lauf → korrekte Historie; Abbruch/Cleanup; byteidentischer Restore im Integrationstest |
+| 3 – Automatische Ausführung | Scheduler, kontinuierliche Volume-/Netzwerk-/Energie-Monitore, Wake-Nachholen, Debounce, Retry, Pause/Resume | Virtuelle Uhr und simulierte Systemereignisse beweisen Ausführung und Unterdrückung |
+| 4 – Vertrauensfunktionen | Plausibilität, Verify, Test-Restore, Wartungskoordination, Health und Mitteilungslogik | Erfolgs-/Fehlerfälle liefern richtige Historie und konkrete Folgeaktionen; keine konkurrierenden Repo-Operationen |
+| 5 – Agent-Laufzeit/Protokoll | Engine-Komposition, vollständige validierte XPC-Requests/Events, Reconnect-Zustand, Shutdown/Cleanup | Request → Engine → Event geprüft; signierte Live-Nachweise separat offen ausweisen |
+| 6 – Lokaler App-Workflow | AgentConnection, Navigation, lokale Einrichtung, Plan-Editor, Übersicht, Fortschritt, Aktivität, Menüleiste | Vollständiger lokaler Nutzerworkflow; DE/EN, Previews und UI-/Accessibility-Abnahme gemäß AGENTS.md |
+| 7 – Wiederherstellung | Snapshot-Tabelle/Filter, Browser/Suche, Quick Look, Restore-Sheet, Fortschritt/Abbruch, Overwrite-Bestätigung | Datei/Ordner/Snapshot mit sicheren Defaults wiederherstellen |
+| 8 – Remote-Ziele, je Backend ein Batch | Authentifizierter create/connect/test-Pfad, sicherer Secret-Transport, Engine-Integration und Assistent | Pro Backend reale Integrations- und Secret-Persistenzprüfung |
+| 9 – Release-Abnahme | Diagnose, Updates, Hilfe, A11y-/Performance-Audit, Signierung/Notarisierung/Packaging | Vollständige Release-Checkliste auf erforderlicher Plattformmatrix |
+
+Remote-Engine-Batches dürfen nach ihren eigenen Voraussetzungen vorgezogen werden; sie blockieren den
+lokalen Durchstich nicht. Signierte XPC-/Registrierungs-/TCC-Nachweise bleiben gemäß Nutzerentscheidung
+zurückgestellt, ohne unsichere Ersatztransporte. Der Implementierungsstand und die formale Phasenabnahme
+werden im Status getrennt ausgewiesen. Offene Produktentscheidungen (etwa Server-Checkpoint-Intervall)
+bleiben explizit offen; ein Batch ändert sie nicht stillschweigend.
+
+Während eines Batches gezielt prüfen, am Ende alle vorgeschriebenen Format-/Package-/Xcode-Prüfungen.
+Kleine logische Commits und reviewbare PRs bleiben erforderlich; das PR-Größenziel aus AGENTS.md wird
+nicht durch große Agent-Aufträge aufgehoben. Routinemäßige technische Entscheidungen werden im Auftrag
+abgeschlossen; echte Produktentscheidungen und externe Voraussetzungen bilden getrennte Haltepunkte.
+
 ### Phase 0 – Fundament & Spikes (Risiken zuerst)
 1. Xcode-Projekt (App + Agent), lokales Package `MacKopiaKit` mit allen Modul-Targets (leer), xcconfigs, Bundle-IDs, Team,
    Hardened Runtime, Entitlements, String Catalog, swift-format (`.swift-format` liegt bereits im Repo), CI-Grundgerüst.
@@ -1150,6 +1205,8 @@ Fehler-Mapping gehört in **eine** Datei mit Tests pro Zeile.
 
 | Datum | Entscheidung | Grund |
 |---|---|---|
+| 2026-10-24 | Agent-Aufträge als vollständige Ausführungsbatches gemäß §14; Phasen bleiben Abnahmegates | Nutzer hat den Vorschlag größerer zusammenhängender Läufe zur Umsetzung freigegeben; weniger wiederholte Kontext-/Prüf-/Hand-off-Schritte, vollständige Verdrahtung pro Batch |
+| 2026-10-24 | Policy-Abgleich mit nichtpersistierender Vorschau, erneuten Leseprüfungen und Nachprüfung; kein Plan-Hash-Cache und keine automatische Rückschreibung | Kopia 0.23.1 unterstützt `resolve.updates`, aber keinen bedingten PUT. Vererbung/Ausschlüsse können unabhängig vom Plan wechseln; externe Schreibrennen bleiben ausdrücklich möglich. Scheduling bleibt unverändert; unwirksame Sollwerte blockieren |
 | 2026-10-24 | macOS-Standardmuster Version 1 werden quellbezogen projiziert und an der Quellwurzel verankert | Verhindert Ausschlüsse gleichnamiger Library-Verzeichnisse außerhalb des übergebenen Home. Quellen innerhalb ausgeschlossener Home-Unterbäume liefern explizit `**`; optionale Regeln und Dateisystem-/Time-Machine-Auflösung bleiben separat. |
 | 2026-10-24 | Eigenständige In-Memory-JobQueue mit FIFO, zusammengefassten Planaufträgen und kennungsgebundenem Abschluss | Wartende Aufträge erhalten den jüngsten Planstand; aktive Läufe bleiben unverändert. Ein Folgeauftrag pro aktivem Plan bleibt möglich, verspäteter Abschluss entsperrt keinen neueren Lauf. Ausführung, ConfigStore-Abgleich und Repository-Sperre bleiben separat. |
 | 2026-10-24 | Reine Policy-Übersetzung liefert nur planverwaltete Sollwerte; aktivierte Ausschlussresolver müssen explizite Ergebnisse liefern | Kein unvollständiger PUT-Body und kein stiller Wegfall aktivierter macOS-/Time-Machine-Regeln. Reihenfolge und Negationen bleiben erhalten; Resolver, Vererbungssteuerung und Schreibabgleich folgen separat. |

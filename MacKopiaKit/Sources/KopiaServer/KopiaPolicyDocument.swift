@@ -16,7 +16,7 @@ package struct KopiaPolicyDocument: Sendable, Equatable, CustomReflectable {
             guard scanner.index == scanner.bytes.count else { throw KopiaPolicyMergeError.invalidDocument }
             _ = try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
             fields = try Self.object(data)
-            for name in ["retention", "files", "compression"] {
+            for name in ["retention", "files", "compression", "scheduling"] {
                 if let section = fields[name], section != Data("null".utf8) {
                     _ = try Self.object(section)
                 }
@@ -33,6 +33,78 @@ package struct KopiaPolicyDocument: Sendable, Equatable, CustomReflectable {
     }
 
     package var customMirror: Mirror { Mirror(self, children: ["policyDocument": "<private>"]) }
+
+    package func value(for name: String) -> Data? { fields[name] }
+
+    /// Compare JSON objects independent of key order without rounding opaque numeric tokens.
+    package func equivalent(to other: Self) throws -> Bool {
+        try Self.canonical(encoded()) == Self.canonical(other.encoded())
+    }
+
+    /// Kopia 0.23.1 emits empty struct sections, but omits empty ignore lists and zero maxFileSize.
+    /// Optional false/zero values remain significant. Unknown fields are never discarded here.
+    package func equivalentStoredDefinition(to other: Self) throws -> Bool {
+        try normalized().equivalent(to: other.normalized())
+    }
+
+    private func normalized() throws -> Self {
+        var result = self
+        if let data = fields["files"], data != Data("null".utf8) {
+            var files = try Self.object(data)
+            if let ignore = files["ignore"], try Self.canonical(ignore) == Data("[]".utf8) {
+                files["ignore"] = nil
+            }
+            if files["maxFileSize"] == Data("0".utf8) { files["maxFileSize"] = nil }
+            result.fields["files"] = try Self.encodeObject(files)
+        }
+        for name in [
+            "retention", "files", "errorHandling", "scheduling", "compression", "metadataCompression",
+            "splitter", "actions", "upload",
+        ] {
+            if let data = result.fields[name], try Self.canonical(data) == Data("{}".utf8) {
+                result.fields[name] = nil
+            }
+        }
+        for (name, empty) in [
+            "osSnapshots": #"{"volumeShadowCopy":{}}"#,
+            "logging": #"{"directories":{},"entries":{}}"#,
+        ] {
+            if let data = result.fields[name],
+                try Self.canonical(data) == Self.canonical(Data(empty.utf8))
+            {
+                result.fields[name] = nil
+            }
+        }
+        return result
+    }
+
+    private static func canonical(_ data: Data) throws -> Data {
+        var scanner = PolicyJSONScanner(bytes: Array(data))
+        scanner.skipWhitespace()
+        if scanner.bytes[scanner.index] == 123 {
+            return try encodeObject(object(data).mapValues { try canonical($0) })
+        }
+        if scanner.consume(91) {
+            var values: [Data] = []
+            scanner.skipWhitespace()
+            while !scanner.consume(93) {
+                let start = scanner.index
+                try scanner.scanValue()
+                values.append(try canonical(Data(scanner.bytes[start..<scanner.index])))
+                scanner.skipWhitespace()
+                if scanner.consume(44) { scanner.skipWhitespace() } else { break }
+            }
+            return Data("[".utf8)
+                + values.reduce(into: Data()) { result, value in
+                    if !result.isEmpty { result.append(44) }
+                    result.append(value)
+                } + Data("]".utf8)
+        }
+        if scanner.bytes[scanner.index] == 34 {
+            return try JSONEncoder().encode(JSONDecoder().decode(String.self, from: data))
+        }
+        return Data(data.filter { ![9, 10, 13, 32].contains($0) })
+    }
 
     /// Missing and null sections both represent an unset Kopia struct. Other non-object values are rejected.
     package mutating func updateSection(_ name: String, values: [String: Data?]) throws {

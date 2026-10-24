@@ -72,8 +72,12 @@ def main():
             if self.path.startswith("/api/v1/policy/resolve?"):
                 mark("policy-resolve-request")
                 length = int(self.headers.get("Content-Length", "0"))
-                valid = (length <= 1024 and self.headers.get("Content-Type") == "application/json"
-                         and json.loads(self.rfile.read(length)) == {"numUpcomingSnapshotTimes": 0})
+                payload = json.loads(self.rfile.read(length)) if length <= 1024 * 1024 + 64 else None
+                self.proposal = payload.get("updates") if isinstance(payload, dict) else None
+                valid = (self.headers.get("Content-Type") == "application/json"
+                         and (payload == {"numUpcomingSnapshotTimes": 0}
+                              or (mode == "policy-write" and isinstance(self.proposal, dict)
+                                  and payload == {"numUpcomingSnapshotTimes": 0, "updates": self.proposal})))
                 if not valid:
                     mark("invalid-policy-body")
                 self.do_GET()
@@ -96,6 +100,15 @@ def main():
             self.send_header("Content-Length", "0")
             self.end_headers()
             self.close_connection = True
+
+        def do_PUT(self):
+            mark("policy-write-request")
+            length = int(self.headers.get("Content-Length", "0"))
+            self.write_document = json.loads(self.rfile.read(length)) if length <= 1024 * 1024 else None
+            if (self.headers.get("Content-Type") != "application/json"
+                    or not isinstance(self.write_document, dict)):
+                mark("invalid-policy-body")
+            self.do_GET()
 
         def do_GET(self):
             try:
@@ -203,6 +216,16 @@ def main():
                             self.wfile.write(b"0\r\n\r\n")
                             self.wfile.flush()
                             return
+                    if mode == "policy-write":
+                        status = 200
+                        if self.command == "PUT":
+                            server.policy_document = self.write_document
+                            body = b'{}'
+                        elif "/resolve?" in self.path:
+                            proposal = getattr(self, "proposal", None)
+                            body = json.dumps({"effective": proposal if proposal is not None else getattr(server, "policy_document", {})}).encode()
+                        else:
+                            body = json.dumps(getattr(server, "policy_document", {})).encode()
                     self.send_response(status)
                     self.send_header("Content-Length", str(LIMIT + 1 if mode == "policy-oversized" else len(body)))
                     self.end_headers()

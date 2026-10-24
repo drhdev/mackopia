@@ -1,7 +1,7 @@
 import Foundation
 
 /// Cookies and credentials stay private; complete policies use a bounded, redacted document.
-actor KopiaServerClient {
+package actor KopiaServerClient: KopiaPolicyServing {
     private let handshake: KopiaServerHandshake
     private let session: URLSession
     private var csrf: KopiaServerCSRFSession?
@@ -79,7 +79,7 @@ actor KopiaServerClient {
     }
 
     /// Complete definition for a later merge, bound to the exact request selector. No inheritance resolution.
-    func policyDefinition(source: KopiaSnapshotSource) async throws -> KopiaSourcePolicyDefinition? {
+    package func policyDefinition(source: KopiaSnapshotSource) async throws -> KopiaSourcePolicyDefinition? {
         do {
             let data = try await read(.policy(source), maximumBytes: KopiaPolicyDocument.maximumBytes)
             let document: KopiaPolicyDocument
@@ -97,6 +97,30 @@ actor KopiaServerClient {
         try await get(.resolvePolicy(source))
     }
 
+    /// Kopia 0.23.1: resolve with updates computes inheritance without persisting the proposal.
+    package func previewPolicy(
+        source: KopiaSnapshotSource, updates: KopiaPolicyDocument?
+    ) async throws -> KopiaPolicyDocument {
+        var body = Data(#"{"numUpcomingSnapshotTimes":0"#.utf8)
+        if let updates { body.append(Data(",\"updates\":".utf8)); body.append(try updates.encoded()) }
+        body.append(125)
+        let data = try await read(.resolvePolicy(source), body: body)
+        do {
+            let response = try KopiaPolicyDocument(data: data)
+            if let error = response.value(for: "schedulingError"), error != Data("\"\"".utf8),
+                error != Data("null".utf8)
+            {
+                throw KopiaServerClientError.response
+            }
+            guard let effective = response.value(for: "effective") else { throw KopiaServerClientError.response }
+            return try KopiaPolicyDocument(data: effective)
+        } catch { throw KopiaServerClientError.response }
+    }
+
+    package func replacePolicy(source: KopiaSnapshotSource, document: KopiaPolicyDocument) async throws {
+        _ = try await read(.policy(source), method: "PUT", body: document.encoded())
+    }
+
     func directory(id: String) async throws -> KopiaDirectory {
         let directory: KopiaDirectory = try await get(.directory(id))
         guard directory.stream == "kopia:directory" else { throw KopiaServerClientError.response }
@@ -110,14 +134,22 @@ actor KopiaServerClient {
         }
     }
 
-    private func read(_ route: KopiaServerRoute, maximumBytes: Int = 4 * 1024 * 1024) async throws -> Data {
+    private func read(
+        _ route: KopiaServerRoute, maximumBytes: Int = 4 * 1024 * 1024,
+        method: String? = nil, body: Data? = nil
+    ) async throws -> Data {
         var request = try Self.request(handshake: handshake, route: route)
+        if let method { request.httpMethod = method }
+        if let body {
+            request.httpBody = body
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        }
         let csrf = try await authenticate()
         guard !closed else { throw KopiaServerClientError.closed }
         request.setValue("Kopia-Session-Cookie=" + csrf.cookie, forHTTPHeaderField: "Cookie")
         request.setValue(csrf.token, forHTTPHeaderField: "X-Kopia-CSRF-Token")
         let allowsMissingPolicy: Bool
-        if case .policy = route { allowsMissingPolicy = true } else { allowsMissingPolicy = false }
+        if case .policy = route, method == nil { allowsMissingPolicy = true } else { allowsMissingPolicy = false }
         let (_, data) = try await Self.read(
             session: session, request: request, allowsMissingPolicy: allowsMissingPolicy, maximumBytes: maximumBytes)
         try Task.checkCancellation()

@@ -2,7 +2,7 @@ import BackupDomain
 import Foundation
 
 /// Desired plan-owned values, not a complete Kopia policy or a serializable PUT body.
-/// A future writer must preserve unrelated fields and handle Kopia inheritance explicitly.
+/// The synchronizer preserves unrelated fields and checks Kopia's effective inheritance separately.
 package struct TranslatedSourcePolicy: Sendable, Equatable, CustomReflectable {
     package let source: BackupSource
     package let retention: RetentionPolicy

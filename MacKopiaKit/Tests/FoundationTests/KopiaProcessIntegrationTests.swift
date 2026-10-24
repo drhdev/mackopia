@@ -215,6 +215,9 @@ struct KopiaProcessIntegrationTests {
             #expect(detail.kind == "Repository")
             #expect(detail.status == "SUCCESS")
 
+            try await NativePolicySynchronizationProbe.run(
+                client: client, source: source, root: root, selector: selector)
+
         } catch {
             await client.close()
             try? await server.stop()
