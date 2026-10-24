@@ -15,6 +15,7 @@ jobs:
           swift --version
           python3 -c "import ssl; assert ssl.HAS_TLSv1_3, 'TLS 1.3 Python runtime required for network tests'"
           echo "MACKOPIA_TEST_PYTHON=$(python3 -c 'import sys; print(sys.executable)')" >> "$GITHUB_ENV"
+          python3 Scripts/check-test-python.py
       - uses: actions/cache@v4
         with:
           path: Vendor/kopia
