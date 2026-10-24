@@ -170,13 +170,39 @@ def main():
                     body = b'{"retention":{"keepLatest":0}}'
                     if "/resolve?" in self.path:
                         body = b'{"defined":{},"effective":{"retention":{"keepLatest":0}}}'
-                    if mode != "policy-read":
+                    if mode != "policy-read" and not mode.startswith("policy-definition-"):
                         status = 404 if mode == "policy-http404" else 400
                         body = b'{"code":"NOT_FOUND","error":"private details"}'
                     if mode == "policy-wrong-error":
                         body = b'{"code":"NOT_CONNECTED","error":"private details"}'
                     if mode == "policy-malformed":
                         body = b'{"code":[]}'
+                    if mode.startswith("policy-definition-"):
+                        bodies = {
+                            "policy-definition-read": b'{"future":{"number":9007199254740993,"huge":184467440737095516160,"decimal":1.234567890123456789},"files":{"ignore":["private pattern"],"future":true},"retention":{"keepLatest":0},"scheduling":{"intervalSeconds":3600}}',
+                            "policy-definition-array": b'[]',
+                            "policy-definition-null": b'null',
+                            "policy-definition-malformed": b'{',
+                            "policy-definition-duplicate": b'{"files":{},"f\\u0069les":{}}',
+                            "policy-definition-section": b'{"files":{"ignore":[],"ignore":[]}}',
+                            "policy-definition-type": b'{"compression":false}',
+                            "policy-definition-depth": b'{"future":' + b'[' * 65 + b'0' + b']' * 65 + b'}',
+                        }
+                        body = bodies.get(mode, b'{}')
+                        if mode in ("policy-definition-exact", "policy-definition-declared", "policy-definition-chunked"):
+                            prefix, suffix = b'{"future":"', b'"}'
+                            count = 1024 * 1024 + (mode != "policy-definition-exact")
+                            body = prefix + b'x' * (count - len(prefix) - len(suffix)) + suffix
+                        if mode == "policy-definition-chunked":
+                            self.send_response(200)
+                            self.send_header("Transfer-Encoding", "chunked")
+                            self.end_headers()
+                            for offset in range(0, len(body), 65_536):
+                                chunk = body[offset:offset + 65_536]
+                                self.wfile.write(f"{len(chunk):x}\r\n".encode() + chunk + b"\r\n")
+                            self.wfile.write(b"0\r\n\r\n")
+                            self.wfile.flush()
+                            return
                     self.send_response(status)
                     self.send_header("Content-Length", str(LIMIT + 1 if mode == "policy-oversized" else len(body)))
                     self.end_headers()

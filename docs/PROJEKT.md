@@ -490,7 +490,14 @@ benutzerdefinierte Muster; keine Sortierung
 oder Deduplizierung, damit Negationen und wiederholte Regeln erhalten bleiben. Für die kombinierte Liste gelten
 dieselben Größen-/Textgrenzen wie für gespeicherte Muster. Keine I/O-, Scheduling- oder Löschaktion.
 
-`KopiaPolicyDocument` hält die vollständige lokale JSON-Definition (maximal 1 MiB, Tiefe 64),
+`policyDefinition(source:)` liest zusätzlich die vollständige lokale Definition über denselben gepinnten
+GET-/CSRF-Transport und liefert sie zusammen mit der exakten angefragten Quellidentität. Nur HTTP 400 +
+`NOT_FOUND` bedeutet eine fehlende Definition; ungültige/mehrdeutige Dokumente bleiben Fehler. Das 1-MiB-Limit
+gilt bereits beim Einlesen, sowohl mit Content-Length als auch bei gestreamten Antworten. Das Ergebnis ist
+eine Momentaufnahme ohne Revisionstoken; es erlaubt keinen späteren unbedingten Schreibzugriff. Keine
+Policy-Änderung oder effektive Freigabe in diesem Lesepfad.
+
+`KopiaPolicyDocument` im Modul `KopiaServer` hält die vollständige lokale JSON-Definition (maximal 1 MiB, Tiefe 64),
 einschließlich unbekannter Werte und ursprünglicher Zahlentokens. `SourcePolicyMerger` ersetzt ausschließlich
 planverwaltete Felder und erhält übrige Felder sowie bestehende Scheduling-Werte unverändert. Retention-nil
 entfernt den lokalen Override, 0 bleibt explizit. Der Baustein führt keine HTTP-Schreibzugriffe aus und bestätigt
@@ -1193,6 +1200,7 @@ Fehler-Mapping gehört in **eine** Datei mit Tests pro Zeile.
 | 2026-10-24 | Time-Machine-Ausschlüsse explizit, quellgebunden und begrenzt auflösen; bei Teilfehlern kein Ergebnis | §10: Tiefe 3, 10.000 Einträge, kooperativ 10 s, höchstens 60 s wiederverwendbar; keine automatische Policy-Anwendung und keine harte Unterbrechung blockierender I/O. |
 | 2026-10-24 | Queue über ConfigStore und geschützten Operationskoordinator freigeben | §7.2/§7.5: aktueller Plan bei Entnahme, erneute Gleichheitsprüfung vor Callback und Queue-Abschluss nach Cleanup; keine produktive Agent-Verdrahtung. |
 | 2026-10-24 | Vollständige lokale Policy-Definition verlustfrei für den späteren Schreibabgleich vorbereiten | §7.1: unbekannte Felder/Zahlentokens erhalten, kein HTTP-Writer. Kopia 0.23.1 vererbt leere Ignore-Listen und maxFileSize 0 weiter; effektive Zielwerte müssen separat validiert werden. |
+| 2026-10-24 | Vollständige Policy-Definitionen über den vorhandenen gepinnten Lesetransport an die exakte Quelle binden | §7.1: JSON-Dokument und Fehler liegen bei den Kopia-Wire-Modellen in KopiaServer; Engine-Merge erhält unbekannte Felder und Zahlentokens. 1 MiB bereits beim Stream begrenzen; kein Revisionstoken, Writer oder automatischer Lauf. |
 | … | *(Spike-Ergebnisse aus Phase 0 hier eintragen)* | |
 
 ---

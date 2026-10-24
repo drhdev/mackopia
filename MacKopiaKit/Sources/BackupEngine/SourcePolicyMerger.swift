@@ -1,4 +1,5 @@
 import Foundation
+import KopiaServer
 
 /// Pure local-definition merge. This does not resolve inheritance or authorize a policy write.
 package enum SourcePolicyMerger {

@@ -1,5 +1,6 @@
 import BackupDomain
 import Foundation
+import KopiaServer
 import Testing
 
 @testable import BackupEngine

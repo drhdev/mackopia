@@ -1,6 +1,6 @@
 import Foundation
 
-/// Cookies, credentials and raw bodies never cross the module boundary.
+/// Cookies and credentials stay private; complete policies use a bounded, redacted document.
 actor KopiaServerClient {
     private let handshake: KopiaServerHandshake
     private let session: URLSession
@@ -78,6 +78,21 @@ actor KopiaServerClient {
         }
     }
 
+    /// Complete definition for a later merge, bound to the exact request selector. No inheritance resolution.
+    func policyDefinition(source: KopiaSnapshotSource) async throws -> KopiaSourcePolicyDefinition? {
+        do {
+            let data = try await read(.policy(source), maximumBytes: KopiaPolicyDocument.maximumBytes)
+            let document: KopiaPolicyDocument
+            do { document = try KopiaPolicyDocument(data: data) } catch { throw KopiaServerClientError.response }
+            try Task.checkCancellation()
+            return KopiaSourcePolicyDefinition(source: source, document: document)
+        } catch KopiaServerClientError.policyNotFound {
+            try Task.checkCancellation()
+            guard !closed else { throw KopiaServerClientError.closed }
+            return nil
+        }
+    }
+
     func resolvePolicy(source: KopiaSnapshotSource) async throws -> KopiaResolvedPolicy {
         try await get(.resolvePolicy(source))
     }
@@ -89,6 +104,13 @@ actor KopiaServerClient {
     }
 
     private func get<Response: Decodable & Sendable>(_ route: KopiaServerRoute) async throws -> Response {
+        let data = try await read(route)
+        do { return try JSONDecoder().decode(Response.self, from: data) } catch {
+            throw KopiaServerClientError.response
+        }
+    }
+
+    private func read(_ route: KopiaServerRoute, maximumBytes: Int = 4 * 1024 * 1024) async throws -> Data {
         var request = try Self.request(handshake: handshake, route: route)
         let csrf = try await authenticate()
         guard !closed else { throw KopiaServerClientError.closed }
@@ -97,12 +119,10 @@ actor KopiaServerClient {
         let allowsMissingPolicy: Bool
         if case .policy = route { allowsMissingPolicy = true } else { allowsMissingPolicy = false }
         let (_, data) = try await Self.read(
-            session: session, request: request, allowsMissingPolicy: allowsMissingPolicy)
+            session: session, request: request, allowsMissingPolicy: allowsMissingPolicy, maximumBytes: maximumBytes)
         try Task.checkCancellation()
         guard !closed else { throw KopiaServerClientError.closed }
-        do { return try JSONDecoder().decode(Response.self, from: data) } catch {
-            throw KopiaServerClientError.response
-        }
+        return data
     }
 
     private func authenticate() async throws -> KopiaServerCSRFSession {
@@ -163,7 +183,7 @@ actor KopiaServerClient {
     }
 
     private static func read(
-        session: URLSession, request: URLRequest, allowsMissingPolicy: Bool = false
+        session: URLSession, request: URLRequest, allowsMissingPolicy: Bool = false, maximumBytes: Int = 4 * 1024 * 1024
     ) async throws -> (HTTPURLResponse, Data) {
         do {
             guard let delegate = session.delegate as? KopiaServerTrustDelegate else {
@@ -178,7 +198,7 @@ actor KopiaServerClient {
             // Kopia 0.23.1: GET /policy returns HTTP 400 + NOT_FOUND for an undefined policy.
             let missingPolicy = allowsMissingPolicy && response.statusCode == 400
             guard response.statusCode == 200 || missingPolicy else { throw KopiaServerClientError.response }
-            let limit = 4 * 1024 * 1024
+            let limit = maximumBytes
             guard response.expectedContentLength <= limit else { throw KopiaServerClientError.responseTooLarge }
             var body = Data()
             for try await byte in bytes {

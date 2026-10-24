@@ -16,6 +16,11 @@ package struct KopiaPolicyDocument: Sendable, Equatable, CustomReflectable {
             guard scanner.index == scanner.bytes.count else { throw KopiaPolicyMergeError.invalidDocument }
             _ = try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
             fields = try Self.object(data)
+            for name in ["retention", "files", "compression"] {
+                if let section = fields[name], section != Data("null".utf8) {
+                    _ = try Self.object(section)
+                }
+            }
         } catch { throw KopiaPolicyMergeError.invalidDocument }
     }
 
@@ -30,7 +35,7 @@ package struct KopiaPolicyDocument: Sendable, Equatable, CustomReflectable {
     package var customMirror: Mirror { Mirror(self, children: ["policyDocument": "<private>"]) }
 
     /// Missing and null sections both represent an unset Kopia struct. Other non-object values are rejected.
-    mutating func updateSection(_ name: String, values: [String: Data?]) throws {
+    package mutating func updateSection(_ name: String, values: [String: Data?]) throws {
         var section: [String: Data] = [:]
         if let existing = fields[name], existing != Data("null".utf8) {
             section = try Self.object(existing)
