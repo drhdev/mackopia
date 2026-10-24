@@ -2,76 +2,70 @@ import Darwin
 import Foundation
 import Testing
 
+@testable import KopiaCLI
 @testable import KopiaServer
 
 /// Owns a disposable TLS process; no key, credential or response is written to disk.
 final class KopiaTLSFixture {
     let root: URL
     let client: KopiaServerClient
-    private let process: Process
-    private let input: Pipe
+    private let child: KopiaChildProcess
 
     init(mode: String) async throws {
         root = try KopiaProcessTests().temporaryRoot()
-        process = Process()
-        input = Pipe()
-        let output = Pipe()
         let script = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
             .deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent(
                 "Scripts/native_tls_fixture.py")
-        process.executableURL = TestPythonRuntime.executable
-        process.arguments = [script.path, mode, root.path]
-        process.environment = [
-            "HOME": root.path, "TMPDIR": root.path, "LANG": "en_US.UTF-8", "PYTHONDONTWRITEBYTECODE": "1",
-        ]
-        process.standardInput = input
-        process.standardOutput = output
-        process.standardError = FileHandle.nullDevice
-        var launched = false
         do {
-            try process.run()
-            launched = true
-            let descriptor = output.fileHandleForReading.fileDescriptor
-            guard fcntl(descriptor, F_SETFL, O_NONBLOCK) == 0 else { throw FixtureError.startFailed }
+            child = try KopiaChildProcess.launch(
+                KopiaProcessRequest(
+                    executable: TestPythonRuntime.executable, arguments: [script.path, mode, root.path],
+                    environment: [
+                        "HOME": root.path, "TMPDIR": root.path, "LANG": "en_US.UTF-8",
+                        "PYTHONDONTWRITEBYTECODE": "1",
+                    ]), configuration: nil, keepInputOpen: true)
+        } catch {
+            try? FileManager.default.removeItem(at: root)
+            throw error
+        }
+        do {
             var parser = KopiaServerHandshakeParser()
             var handshake: KopiaServerHandshake?
             let deadline = ContinuousClock.now.advanced(by: .seconds(20))
             var buffer = [UInt8](repeating: 0, count: 8192)
-            while handshake == nil, ContinuousClock.now < deadline, process.isRunning {
+            while handshake == nil, ContinuousClock.now < deadline {
                 try Task.checkCancellation()
-                let count = Darwin.read(descriptor, &buffer, buffer.count)
+                let count = Darwin.read(child.output, &buffer, buffer.count)
                 if count > 0 { handshake = try parser.consume(Data(buffer.prefix(count))) }
                 if count == 0 { break }
                 if count < 0, errno != EAGAIN, errno != EINTR { throw FixtureError.startFailed }
+                // Drain diagnostics without retaining or publishing potentially sensitive output.
+                while Darwin.read(child.error, &buffer, buffer.count) > 0 {}
                 if handshake == nil { try await Task.sleep(for: .milliseconds(10)) }
             }
             guard let handshake else { throw FixtureError.startFailed }
             client = KopiaServerClient(handshake: handshake)
         } catch {
-            try? input.fileHandleForWriting.close()
-            if launched {
-                Self.stop(process)
-            }
+            Self.stop(child)
             try? FileManager.default.removeItem(at: root)
             throw error
         }
     }
 
     deinit {
-        try? input.fileHandleForWriting.close()
-        Self.stop(process)
+        Self.stop(child)
         try? FileManager.default.removeItem(at: root)
     }
 
-    private static func stop(_ process: Process) {
-        // waitUntilExit can strand its caller's run loop after termination on a cooperative executor.
-        // Foundation owns waitpid; observe its reaped state without entering that run loop.
-        if process.isRunning { process.terminate() }
-        let deadline = ContinuousClock.now.advanced(by: .seconds(1))
-        while process.isRunning {
-            if ContinuousClock.now >= deadline { kill(process.processIdentifier, SIGKILL) }
-            usleep(1_000)
-        }
+    private static func stop(_ child: KopiaChildProcess) {
+        // Foundation Process termination/run-loop waits can stall cooperative executor threads.
+        // Own this fixture's waitpid directly; the unreaped PID cannot be reused before signaling.
+        child.signal(SIGKILL)
+        var status: Int32 = 0
+        while waitpid(child.pid, &status, 0) < 0, errno == EINTR {}
+        if let input = child.input { Darwin.close(input) }
+        Darwin.close(child.output)
+        Darwin.close(child.error)
     }
 
     func waitFor(_ name: String, timeout: Duration = .seconds(3)) async throws {
