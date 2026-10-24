@@ -396,6 +396,29 @@ Wechseldatenträgern nur kurz laufen.
 | **Stoppen** | Laufenden Snapshot abbrechen (wie Pause), aber **keine** automatische Wiederaufnahme. Nächster regulärer Trigger gilt wieder. Restliche Quellen des Plans in diesem Lauf werden übersprungen. |
 | **Abbruch hängt** | Nach 30 s ohne Statuswechsel: Server-Prozess beenden (Eskalation 6.2/7), Lauf als `cancelled` mit Hinweis protokollieren. Kein Repo-Schaden möglich. |
 
+Die isolierte Queue-/Runner-Steuerung unterstützt bereits Plan- und globale Pause mit optionalem Endzeitpunkt,
+Fortsetzen und planbezogenen Stopp. Pause hält bestehende wartende Aufträge und weist neue Trigger
+mit einem festen `planPaused`-Fehler ab. Überlagerte globale/individuelle Pausen wirken gemeinsam;
+Aufheben einer Pause hebt die andere nicht auf. Entnahme, Task-Erzeugung und Registrierung des
+Abbruchs geschehen in einem Queue-Actor-Schritt. Der Runner propagiert auch Aufruferabbruch an
+diesen Task und wartet weiterhin Cleanup/Historie ab. Externe Pause-/Stopp-Aufrufe warten auf
+registrierte Ausführungen; ein Aufruf aus der eigenen Ausführung wartet nicht auf sich selbst.
+Fortsetzen merkt während laufender Bereinigung nur den Wiederaufnahmewunsch vor und reiht
+unterbrochene Arbeit erst nach bestätigtem Cancellation-Abschluss neu ein; bereits erfolgreich
+abgeschlossene Arbeit wird nicht allein wegen einer Pause während des Historienabschlusses wiederholt.
+Stopp entfernt Folgeaufträge und Wiederaufnahmewünsche, erhält aber eine bereits explizite Pause.
+Neue Einreihungen durchlaufen beim Start wieder den aktuellen ConfigStore und alle Schutzprüfungen.
+Ein injizierter monotoner Timer hebt nur die zugehörige Pause zum absoluten `until`-Zeitpunkt auf.
+Er wird vor suspendierender Bereinigung scharfgeschaltet; Ablauf während Bereinigung merkt die
+Wiederaufnahme nur vor. Ersetzen/manuelles Fortsetzen cancelt und joint alte Timer; eine eindeutige
+Kennung verhindert veraltete Zustellungen. `BackupPauseOption` berechnet eine Stunde, morgen 08:00
+im injizierten Kalender (auch über Sommer-/Winterzeitwechsel) oder unbegrenzt. Ein bereits gewählter
+Endzeitpunkt bleibt bei Zeitzonenwechsel absolut. Bei zurückgestellter Wanduhr wird vorzeitig ausgelöster
+Timer neu angesetzt; `reconcilePauses` gleicht Wake-/Uhrzeitänderungen ab. `AutomaticBackupRuntime` ruft diesen Abgleich bei Wake-/Uhrzeitereignissen auf. Timerfehler und explizites Ende der Timer-Überwachung lassen die Pause
+als `timerUnavailable(until:)` sichtbar bestehen; nur explizites Fortsetzen/Ersetzen hebt sie dann auf.
+Persistenter Pausenstatus und Agent-/XPC-Anbindung folgen separat; die gemeinsame Package-Laufzeit wird in §7.5 beschrieben. Niedrigstufige `takeNext`-Aufrufer ohne registrierten Task
+bleiben selbst für Abbruch/Bereinigung verantwortlich; die Engine verwendet den registrierten Runner.
+
 Checkpoint-Ziel bleibt 15 Min.; Kopia 0.23.1 bietet dafür jedoch **kein Policy-Feld und keine Server-Option**.
 Das versteckte CLI-Flag `snapshot create --checkpoint-interval=15m` wird akzeptiert (Obergrenze laut Quellcode 45 Min.).
 Der unveränderte Server verwendet den Standard von 45 Min.; die 15-Minuten-Vorgabe ist im Serverbetrieb noch offen.
@@ -597,6 +620,20 @@ beim Laden/Speichern erkannt, nicht durch jeden In-Memory-Lesezugriff. Export/Im
 - Jitter ±60 s für Intervall-Trigger, damit nicht alle Pläne gleichzeitig starten.
 - Keine Läufe in den ersten 60 s nach dem Login (System kommt zur Ruhe).
 
+Implementiert ist zunächst der isolierte Zeit-Scheduler als Package-Actor: injizierte monotone Uhr,
+Wanduhr, Kalender und Jitter; ein abbrechbarer Timer; Konfigurationsersatz, Wake-/Uhrzeitabgleich und
+höchstens eine Anforderung je fälligem Plan. Letzte Laufzeitpunkte werden vom aufrufenden Historienbesitzer
+übergeben; ohne Historie beginnt ein neues Intervall am Startzeitpunkt. Wochenzeiten verwenden die
+Kalenderregeln `nextTime`/`first` (Zeitlücke: nächste gültige Uhrzeit; doppelte Stunde: erste Instanz).
+Intervall-Jitter ist auf ±60 Sekunden begrenzt und das resultierende Intervall mindestens eine Sekunde.
+Planentfernung/Deaktivierung entfernt Timertermine; ein ausstehendes Nachholen bleibt bei Zeitzonenwechsel
+erhalten. Timer-Stopp verhindert weitere Zustellungen, beendet aber keinen bereits angenommenen Lauf.
+Der Empfänger muss jede Anforderung frisch über `ConfiguredJobRunner` zulassen und den geschützten
+Engine-Pfad verwenden. `observeSystemEvents` verbindet den Scheduler über einen injizierten Monitor
+mit Wake-, Uhrzeit- und Zeitzonenereignissen; andere Zustände werden als Hinweise weitergegeben.
+Die Package-Laufzeitkomposition ist in §7.5 beschrieben; Agent-Anbindung und automatische Historienanker bleiben separat offen;
+dieser Actor schaltet keine Quellfreigabe frei.
+
 ### 7.4 Trigger-Monitore (`SystemIntegration`)
 
 - **VolumeMonitor**: `NSWorkspace.didMountNotification`/`didUnmountNotification` + DiskArbitration (`DARegisterDiskAppearedCallback`)
@@ -614,6 +651,39 @@ beim Laden/Speichern erkannt, nicht durch jeden In-Memory-Lesezugriff. Export/Im
   `ProcessInfo.isLowPowerModeEnabled` → bei Stromsparmodus Pläne mit `requiresACPower` überspringen.
 - **SleepAssertion**: Während eines Laufs `IOPMAssertionCreateWithName(kIOPMAssertionTypePreventUserIdleSystemSleep, …)`
   mit Grund „MacKopia-Backup läuft“, garantiert freigegeben (defer / Actor-Deinit).
+
+`LocalSystemEventMonitor` stellt eine abbrechbare kontinuierliche Beobachtung bereit: `NWPathMonitor`
+als AsyncSequence mit Kosten-/Beschränkungszustand und verwendeten Interface-Typen; Energieänderungen
+über IOKit-Run-Loop-Quelle und Stromsparmodus-Notification mit gemeinsamem frischen Power-Decoder;
+Mount/Unmount über NSWorkspace und DiskArbitration einschließlich UUID-/Mountpfadänderungen.
+Bereits beim Start gemountete Volumes werden als Ausgangszustand erfasst, nicht als neue Mount-Ereignisse.
+Die Ereignisse enthalten UUIDs statt Volume-Namen oder Quellpfaden und geben keine Datenzugriffe frei.
+Native Callbacks und Abbau laufen auf dem MainActor; schwache, nicht wiederverwendete Callback-Token
+verhindern Zugriffe auf freigegebene Besitzer. Abbruch wartet auf beide Beobachter und entfernt Quellen,
+Callbacks und Notification-Abonnements. Ein unerwartetes Stream-Ende oder Überlauf des auf 256 Ereignisse
+begrenzten nativen Puffers liefert einen Fehler statt stillen Ereignisverlusts. Doppelte Power-/Netzwerk-
+und Mount-Zustände werden unterdrückt. Der Netzwerkzustand ist kein Erreichbarkeitsnachweis für ein
+Speicherziel. Energiebedingungen bei automatischer Ausführung, SleepAssertion und produktive
+Agent-Komposition bleiben separat offen.
+
+`EventTriggerCoordinator` ordnet UUID-Ereignisse aktivierten Plänen mit `onVolumeMount` und passender
+Quell- oder Zielvolume-UUID zu. Ein abbrechbarer monotoner Timer entprellt relevante Mount-Ereignisse pro
+Plan für zehn Sekunden; mehrere passende Volumes ergeben eine Anforderung. Unmount entfernt dessen
+ausstehende Ereignisgrundlage. Der Login-Schutz von 60 Sekunden gilt auch für Ereignis-Trigger.
+Netzwerkzustandsänderungen prüfen ausschließlich konfigurierte Ziele: SFTP-Host/Port, WebDAV-/S3-URL
+oder SMB-Remount-URL eines Dateisystem-Ziels. Ohne konfigurierten Host/Port entsteht keine Netzwerkanforderung.
+Probes laufen sequenziell; gleiche Ziele samt Kostenrestriktionen teilen ein Ergebnis innerhalb des Ereignisses.
+Unbekannte/gesperrte Kosten-/Beschränkungszustände und noch nicht prüfbare WLAN-Bedingungen verhindern Probes.
+`TCPReachabilityChecker` verwendet die ab macOS 26 verfügbaren strukturierten Network-APIs: TCP-Aufbau mit
+End-of-stream ohne Anwendungsbytes oder Zugangsdaten, maximal fünf Sekunden, mit anschließender
+Transportbereinigung. Kosten-/Beschränkungsverbote gelten zusätzlich direkt am Verbindungsparameter.
+Eine erfolgreiche Probe bestätigt weder TLS/Host-Key noch Anmeldung, Speicherplatz oder Quellfreigabe.
+Vor Einreihung verlangt die neue `ConfiguredJobRunner`-Grenze exakt denselben aktuellen Plan und dasselbe
+Speicherziel wie bei der Ereignisprüfung. Konfigurationswechsel, Netzwerkverlust und Stopp verwerfen
+veraltete Antworten; Stopp wartet auf Timer-/Probe-/Zustellbereinigung. Ein bereits angenommener Queue-Eintrag
+wird dadurch nicht entfernt und kein laufendes Backup abgebrochen. Jede spätere Ausführung bleibt an die
+frische Vorabprüfung und den geschützten Engine-Pfad gebunden. Es gibt noch keine periodischen Ziel-Probes,
+persistente Trigger-Zustände oder produktive Agent-/XPC-Komposition. Die automatische Engine-Drain-Schleife ist in §7.5 beschrieben.
 
 ### 7.5 Job-Queue & Zustandsmaschine
 
@@ -639,8 +709,7 @@ ein Plan aktiv ist, wird höchstens ein weiterer Auftrag dafür vorgemerkt. Ande
 entnommen werden; derselbe Plan bleibt bis zum bestätigten Abschluss gesperrt. Abschluss benötigt die
 konkrete Laufkennung, damit verspätete Rückmeldungen keinen neueren Lauf freigeben. Die Engine muss
 Abschluss erst nach vollständigem Operations-Cleanup melden und Planfreigabe, aktuellen ConfigStore-Stand
-sowie Repository-Sperre beim Start erneut prüfen. Die Queue startet selbst keine Prozesse; Scheduler,
-Retry, Historie, persistente Wiederaufnahme und Agent-Anbindung bleiben separat offen.
+sowie Repository-Sperre beim Start erneut prüfen. Die Queue startet selbst keine Prozesse; der Laufzeitbesitzer verbindet Scheduler, Retry und Historie. Persistente Wiederaufnahme und Agent-Anbindung bleiben offen.
 
 `ConfiguredJobRunner` verbindet diese Queue explizit mit dem ConfigStore und der bestehenden geschützten
 Operationsgrenze. Einlieferung und Entnahme lösen Plan/Speicherziel erneut aus der Konfiguration auf:
@@ -650,7 +719,7 @@ Planstand. Direkt vor dem Operations-Callback wird nach allen suspendierenden Vo
 Plan-/Speicherzielgleichheit geprüft. Die Laufkennung wird auf jedem Ausgang erst nach abgeschlossener
 Operations-/Schutzbereinigung freigegeben. Dies ist keine Sperre gegen Konfigurationsänderungen während
 einer bereits gestarteten Operation. Der generische Runner startet selbst keine Prozesse; der folgende
-manuelle Engine-Pfad liefert den konkreten Operations-Callback. Scheduler und Agent-Laufzeitverdrahtung folgen separat.
+manuelle Engine-Pfad liefert den konkreten Operations-Callback und wird von der Package-Laufzeit wiederverwendet. Agent-Laufzeitverdrahtung folgt separat.
 
 `ManualBackupEngine` verbindet diesen Runner explizit mit einer Dateisystem-Server-Sitzung: Secret frisch
 auflösen, isolierte reguläre 0600-Konfiguration auf Zielpfad, gespeicherte Identität und deaktivierte Kopia-Actions
@@ -681,13 +750,50 @@ Logdatei-Verknüpfung und die Aktivitätsoberfläche folgen separat.
 Der manuelle Durchstich unterstützt Dateisystem-Ziele und normale bzw. niedrige Prozesspriorität
 (`QOS_CLASS_BACKGROUND` bereits bei `posix_spawn`). Noch nicht verdrahtete explizite Parallelitäts-/Bandbreiten-
 und Auswerfen-Optionen blockieren vor dem Serverstart, statt still ignoriert zu werden. Netzwerkziele,
-Scheduler/Retry/Pause-Resume, Plausibilitätsprüfung/Pinning und XPC-Komposition bleiben den weiteren Batches
-zugeordnet. Die produktive Quellfreigabe bleibt ohne signierten FDA-/Kindprozessnachweis gesperrt;
+persistenter Pausenstatus,
+Plausibilitätsprüfung/Pinning und XPC-Komposition bleiben den weiteren Batches zugeordnet. Die produktive Quellfreigabe bleibt ohne signierten FDA-/Kindprozessnachweis gesperrt;
 der Integrationstest autorisiert ausschließlich selbst erzeugte temporäre Quellen über einen Testadapter.
 
 - **Retry-Strategie** bei transienten Fehlern (Netzwerk, Timeout, Ziel kurz weg): exponentiell 1 → 5 → 15 Min.,
-  max. 3 Versuche, danach `failed` + Mitteilung. Nicht-transiente Fehler (falsches Passwort, Repo nicht gefunden,
+  max. drei Wiederholungen zusätzlich zum ersten Lauf, danach `failed` + Mitteilung. Nicht-transiente Fehler (falsches Passwort, Repo nicht gefunden,
   Berechtigung) → sofort `failed`, kein Retry.
+Der isolierte `BackupRetryCoordinator` verwendet eine injizierte monotone Uhr und hält je Plan eine
+Wiederholungskette. Doppelte Fehlermeldungen desselben Laufs erzeugen keine zusätzlichen Timer;
+nach drei Wiederholungen oder permanentem Fehler erfolgt genau eine terminale Rückmeldung pro Kette.
+Jede Wiederholung liefert über `ConfiguredJobRunner` den geprüften Plan-/Speicherzielstand erneut ein;
+geänderte Konfiguration verhindert die Aufnahme. Abbruch wird nie wiederholt. Reset/Stop bricht Timer
+und laufende Aufnahme ab und wartet deren Ende ab. Die Laufzeitkomposition meldet erst nach
+Historienabschluss, Prozessbereinigung und Queue-Freigabe Fehler und setzt Ketten bei Erfolg,
+neuem regulärem Auftrag und Pause/Stopp zurück. Ein Konfigurationswechsel erfordert eine neue Laufzeitinstanz. Aktuell klassifiziert die
+Engine nur `volumeDisappeared` automatisch als transient. Vertrauenswürdige Adapter können explizite
+Netzwerk-/Timeout-Evidenz übergeben; pauschale Transport-/Kopia-Fehler bleiben permanent. Weitere typisierte Fehlerklassifizierung, produktive Agent-Anbindung und persistente Wiederaufnahme fehlen noch.
+
+`AutomaticBackupRuntime` verbindet innerhalb des Package eine geladene Konfiguration, Zeit-Scheduler,
+Systemmonitor, Ereignis-Trigger, Retry, Queue und den geschützten Dateisystem-Engine-Pfad. Sie erzeugt
+Queue/Runner/Engine gemeinsam und besitzt genau einen seriellen Engine-Verbraucher. Ein separater
+Queue-Beobachter reagiert auch während eines langen Laufs auf Pausenablauf; zusammengefasste Wakeups
+tragen eine Pausenrevision, damit die Wiederfreigabe von Ereignis-Triggern nicht verloren geht.
+`ManualBackupEngine.performNext(finished:)` meldet sein Ergebnis erst nach Historienversuch, Ressourcen-
+Cleanup und Queue-Freigabe. Ein schneller fehlgeschlagener Retry wartet auf den Abschluss seiner noch
+laufenden Einlieferung; ein zwischenzeitlicher Reset verwirft die alte Rückmeldung.
+
+Pause/Stopp sperrt betroffene Einlieferungen, cancelt und joint suspendierende Admission-Worker und setzt
+die Retry-Kette zurück. Planbezogene Ereignisversionen verwerfen alte Mount-/Probe-Evidenz, auch nach
+schnellem Pause/Resume. Andere Pläne behalten ihre Debounce-Fristen und gemeinsam geprüfte TCP-Ergebnisse.
+Während einer Steuermethode liefert eine weitere Steuermethode `repositoryBusy`, statt sich zu überholen.
+Wake/Uhrzeit/Zeitzone gehen an den Scheduler, Wake/Uhrzeit zusätzlich an die Pausensteuerung. Ein fehlerhaftes
+oder unerwartet beendetes Monitoring stoppt weitere Aufnahme, cancelt den aktiven Lauf und wartet dessen
+Bereinigung ab; danach folgt ausschließlich ein fester `monitorUnavailable`-Code. Ebenso enthalten Lauf-
+und Admission-Mitteilungen nur feste Codes mit Plan-UUIDs, keine Adapterdiagnostik oder Pfade.
+
+Die Laufzeit hat explizites, idempotentes `shutdown` mit Join aller eigenen Worker und Pausentimer;
+der Besitzer muss sie auch bei Fehlern so beenden. Shutdown ist terminal. Konfiguration wird beim Start
+gebunden; Live-Konfigurationsreload und automatische Historienanker sind noch nicht integriert. Letzte
+Laufdaten werden weiterhin explizit an `start(lastRuns:)` übergeben. Die Konfiguration wird trotzdem vor
+jeder Queue-Aufnahme/Operation frisch geprüft. Unbestätigte Quellfreigabe bleibt `skipped`, ohne einen
+Server zu öffnen. Kein Agent-/XPC-/UI-Einstieg wurde damit produktiv aktiviert; SleepAssertion,
+Persistenz der Laufsteuerung und die signierten Systemnachweise bleiben offen.
+
 - Jeder Lauf erzeugt einen `JobRun`-Eintrag in der Historie (Start, Ende, Ergebnis, Statistik, Snapshot-IDs, Fehlerliste,
   Verweis auf Kopia-Logdatei).
 - **Plausibilitätsprüfung nach dem Snapshot** („Ransomware-/Unfall-Wächter“): Fällt die Dateianzahl oder Gesamtgröße
@@ -1263,6 +1369,7 @@ Fehler-Mapping gehört in **eine** Datei mit Tests pro Zeile.
 | 2026-10-23 | Deutsch + Englisch via String Catalog | Nutzerwunsch |
 | 2026-10-23 | v1 enthält: mehrere Pläne, Restore-Browser, Aufbewahrung/Ausschlüsse, Prüfung/Berichte | Nutzerwunsch |
 | 2026-10-23 | Pause = Abbruch mit Checkpoint, Fortsetzen = neuer Lauf | Kopia kennt kein echtes Pausieren; Dedup macht Neustart billig |
+| 2026-10-24 | Zeit-Scheduler mit injizierter monotoner Uhr und separater Kalenderberechnung | §7.3: Wochenzeiten mit `nextTime`/`first`, Mindestintervall nach Jitter eine Sekunde; neue Intervalle ohne Historie beginnen beim Start. Nachholen bleibt eine einzelne verzögerte Anforderung. Produktive Komposition bleibt separat. |
 | 2026-10-23 | Zeitpläne nur in MacKopia, keine Kopia-Scheduling-Policies | Eine einzige Wahrheit, Trigger mit Bedingungen |
 | 2026-10-23 | APFS-Snapshots, Hooks, Finder-Mount → Phase 2 | Privilegierter Helper nötig bzw. nicht kritisch für 1.0 |
 | 2026-10-23 | Phase-0-Gerüst vorerst mit `MacKopia`, `com.example.MacKopia` und leerer Team-ID; lokale Builds ad-hoc signiert | Vom Nutzer bestätigt; finale Identität und Developer-ID-Signierung bleiben offen |
@@ -1300,6 +1407,12 @@ Fehler-Mapping gehört in **eine** Datei mit Tests pro Zeile.
 | 2026-10-24 | Vollständige lokale Policy-Definition verlustfrei für den späteren Schreibabgleich vorbereiten | §7.1: unbekannte Felder/Zahlentokens erhalten, kein HTTP-Writer. Kopia 0.23.1 vererbt leere Ignore-Listen und maxFileSize 0 weiter; effektive Zielwerte müssen separat validiert werden. |
 | 2026-10-24 | Vollständige Policy-Definitionen über den vorhandenen gepinnten Lesetransport an die exakte Quelle binden | §7.1: JSON-Dokument und Fehler liegen bei den Kopia-Wire-Modellen in KopiaServer; Engine-Merge erhält unbekannte Felder und Zahlentokens. 1 MiB bereits beim Stream begrenzen; kein Revisionstoken, Writer oder automatischer Lauf. |
 | … | *(Spike-Ergebnisse aus Phase 0 hier eintragen)* | |
+
+| 2026-10-24 | Retry: drei Wiederholungen zusätzlich zum ersten Lauf | Nutzer bestätigt 1, 5 und 15 Minuten; maximal vier Läufe je Kette. Monotone Timer, frische Konfigurationsprüfung und kein Retry bei unbekanntem Fehler. |
+
+| 2026-10-24 | Zeitbegrenzte Pausen: absoluter Endzeitpunkt mit monotonem Timer | §6.6: Kalenderdatum für morgen 08:00, eindeutige Timerkennung, Wake-/Uhrzeitabgleich; Timerfehler hält Pause sichtbar statt unbeabsichtigt fortzusetzen. Laufzeitkomposition und Persistenz separat. |
+
+| 2026-10-25 | Gemeinsame automatische Package-Laufzeit vor Agent-Komposition | §7.5: ein serieller Engine-Besitzer, separate Queue-Beobachtung, gejointe Admission-Worker, planbezogene Evidenzversionen und terminaler Monitoring-Shutdown. Agent-/XPC-Freigabe und persistente Zustände bleiben separat. |
 
 ---
 

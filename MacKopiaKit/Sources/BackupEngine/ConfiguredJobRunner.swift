@@ -22,6 +22,18 @@ package struct ConfiguredJobRunner: Sendable {
         return try await queue.enqueue(plan: plan, trigger: trigger, requestedAt: requestedAt)
     }
 
+    /// Bind event evidence to the exact configuration that was checked before an awaited debounce/probe.
+    @discardableResult
+    package func enqueue(
+        plan: BackupPlan, repository: Repository, trigger: Trigger, requestedAt: Date
+    ) async throws -> BackupJob {
+        let configuration = try await store.currentConfiguration()
+        let (currentPlan, currentRepository) = try Self.resolve(planID: plan.id, trigger: trigger, in: configuration)
+        guard currentPlan == plan, currentRepository == repository else { throw JobAdmissionError.configurationChanged }
+        try Task.checkCancellation()
+        return try await queue.enqueue(plan: plan, trigger: trigger, requestedAt: requestedAt)
+    }
+
     /// Queue completion is awaited only after the coordinator has finished operation/protection cleanup.
     package func performNext<Value: Sendable>(
         operation: @escaping @Sendable (BackupPlan, Repository, [BackupSource]) async throws -> Value
@@ -39,9 +51,26 @@ package struct ConfiguredJobRunner: Sendable {
         finalized: @escaping @Sendable (BackupJob, Result<BackupOperationResult<Value>, any Error>) async throws -> Void
     ) async throws -> BackupOperationResult<Value>? {
         try Task.checkCancellation()
-        guard let job = await queue.takeNext() else { return nil }
+        guard
+            let task = await queue.startNext(operation: { job in
+                try await execute(job: job, admitted: admitted, operation: operation, finalized: finalized)
+            })
+        else { return nil }
+        return try await withTaskCancellationHandler {
+            try await task.value
+        } onCancel: {
+            task.cancel()
+        }
+    }
+
+    private func execute<Value: Sendable>(
+        job: BackupJob,
+        admitted: @escaping @Sendable (BackupJob) async throws -> Void,
+        operation: @escaping @Sendable (BackupJob, Repository, [BackupSource]) async throws -> Value,
+        finalized: @escaping @Sendable (BackupJob, Result<BackupOperationResult<Value>, any Error>) async throws -> Void
+    ) async throws -> BackupOperationResult<Value> {
         do { try await admitted(job) } catch {
-            await queue.complete(job)
+            await queue.complete(job, wasCancelled: error is CancellationError)
             throw error
         }
         var currentJob = job
@@ -78,7 +107,13 @@ package struct ConfiguredJobRunner: Sendable {
             await queue.complete(job)
             throw error
         }
-        await queue.complete(job)
+        let wasCancelled: Bool
+        if case .failure(let error) = outcome {
+            wasCancelled = error is CancellationError
+        } else {
+            wasCancelled = false
+        }
+        await queue.complete(job, wasCancelled: wasCancelled)
         return try outcome.get()
     }
 

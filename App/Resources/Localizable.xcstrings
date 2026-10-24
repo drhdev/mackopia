@@ -330,6 +330,32 @@
           }
         }
       }
+    },
+    "Der Backup-Plan ist pausiert.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Der Backup-Plan ist pausiert."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The backup plan is paused."
+          }
+        }
+      }
+    },
+    "Systemänderungen können nicht beobachtet werden.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "System changes cannot be monitored."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

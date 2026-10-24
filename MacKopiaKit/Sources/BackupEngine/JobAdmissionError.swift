@@ -1,11 +1,12 @@
 import Foundation
 
 package enum JobAdmissionError: Error, Equatable, LocalizedError, CustomDebugStringConvertible {
-    case planUnavailable, planDisabled, triggerUnavailable, repositoryUnavailable, configurationChanged
+    case planUnavailable, planDisabled, triggerUnavailable, repositoryUnavailable, configurationChanged, planPaused
 
     package var errorDescription: String? {
         switch self {
         case .planUnavailable: String(localized: "Der Backup-Plan ist nicht mehr verfügbar.")
+        case .planPaused: String(localized: "Der Backup-Plan ist pausiert.")
         case .planDisabled: String(localized: "Der Backup-Plan ist deaktiviert.")
         case .triggerUnavailable: String(localized: "Der Auslöser ist nicht mehr eingerichtet.")
         case .repositoryUnavailable: String(localized: "Das Speicherziel ist nicht mehr eingerichtet.")
@@ -16,6 +17,7 @@ package enum JobAdmissionError: Error, Equatable, LocalizedError, CustomDebugStr
     package var debugDescription: String {
         switch self {
         case .planUnavailable: "Configured plan is unavailable"
+        case .planPaused: "Backup plan admission is paused"
         case .planDisabled: "Configured plan is disabled"
         case .triggerUnavailable: "Configured trigger is unavailable"
         case .repositoryUnavailable: "Configured repository is unavailable"

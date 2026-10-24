@@ -7,7 +7,7 @@ package enum ManualBackupStage: Sendable, Equatable {
     case connecting, synchronizing(sourceID: UUID), uploading(sourceID: UUID), stopping
 }
 
-/// Explicit manual execution only; the agent later exposes this boundary through validated XPC.
+/// Protected execution shared by explicit manual requests and the package automatic runtime.
 package actor ManualBackupEngine {
     private let runner: ConfiguredJobRunner
     private let sessions: any BackupSessionOpening
@@ -45,11 +45,26 @@ package actor ManualBackupEngine {
 
     /// Caller cancellation stops the current source and skips the rest; no automatic resumption.
     /// History writes run outside cancellation and finish before the queue releases the run identity.
-    package func performNext() async throws -> JobRun? {
+    package func performNext(
+        finished: @escaping @Sendable (BackupJob, Result<JobRun, any Error>) async -> Void = { _, _ in }
+    ) async throws -> JobRun? {
         guard !active else { throw RepositoryOperationError.repositoryBusy }
         active = true
         defer { active = false }
         let record = ManualRunRecord(now: now)
+        do {
+            try await execute(record: record)
+            let run = await record.completed
+            if let job = await record.job, let run { await finished(job, .success(run)) }
+            return run
+        } catch {
+            if let job = await record.job { await finished(job, .failure(error)) }
+            throw error
+        }
+    }
+
+    /// Completion observation happens only after the runner releases the queue following cleanup.
+    private func execute(record: ManualRunRecord) async throws {
         let sessions = sessions
         let history = history
         let resolver = resolver
@@ -114,7 +129,6 @@ package actor ManualBackupEngine {
                 let run = await record.finish(job: job, result: result)
                 try await Task.detached { try await history.finish(run) }.value
             })
-        return await record.completed
     }
 }
 
@@ -125,10 +139,12 @@ private actor ManualRunRecord {
     private var cleanupIssue = false
     private var cancellationIssue = false
     private(set) var completed: JobRun?
+    private(set) var job: BackupJob?
 
     init(now: @escaping @Sendable () -> Date) { self.now = now }
 
     func begin(_ job: BackupJob) -> JobRun {
+        self.job = job
         startedAt = now()
         return run(job, outcome: .running, issues: [])
     }
@@ -138,6 +154,7 @@ private actor ManualRunRecord {
     func cancellationUnconfirmed() { cancellationIssue = true }
 
     func finish(job: BackupJob, result: Result<BackupOperationResult<Bool>, any Error>) -> JobRun {
+        self.job = job
         var issues: [JobRun.Issue] = []
         let outcome: JobRun.Outcome
         switch result {

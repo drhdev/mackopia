@@ -115,6 +115,25 @@ struct ManualBackupIntegrationTests {
                 #expect(result.files == 2)
             }
         }
+        let automatic = AutomaticBackupRuntime(
+            store: store,
+            coordinator: BackupOperationCoordinator(preflight: preflight, protection: LocalBackupOperationProtection()),
+            sessions: FilesystemBackupSessions(
+                executable: NativeKopiaFixture.binary, homeDirectory: root,
+                temporaryDirectory: root, user: "test-user", secrets: access),
+            history: history, resolver: try TimeMachineExclusionResolver(), homeDirectory: root.path,
+            loginDate: .now, clock: ContinuousClock(), monitor: RuntimeMonitor(),
+            issue: { _ in Issue.record("Automatic drain unexpectedly reported a failure") })
+        try await automatic.start()
+        try await automatic.enqueue(planID: plan.id)
+        try await waitForRuntime(timeout: .seconds(30)) {
+            (try? await history.recent().filter { $0.outcome != .running }.count) == 3
+        }
+        await automatic.shutdown()
+        #expect(await automatic.state == .stopped)
+        let automaticRuns = try await history.recent()
+        #expect(automaticRuns.count == 3)
+        #expect(automaticRuns.allSatisfy { $0.outcome == .succeeded && $0.sources.count == 2 })
         let cancellation = CancellationSessionObservation()
         let cancelQueue = JobQueue()
         let cancelledEngine = ManualBackupEngine(
@@ -137,10 +156,10 @@ struct ManualBackupIntegrationTests {
         #expect(await cancelQueue.takeNext() != nil)
         let reopened = try HistoryStore(directory: historyDirectory)
         let runs = try await reopened.recent()
-        #expect(runs.count == 3)
-        #expect(runs.filter { $0.outcome == .succeeded && $0.sources.count == 2 }.count == 2)
+        #expect(runs.count == 4)
+        #expect(runs.filter { $0.outcome == .succeeded && $0.sources.count == 2 }.count == 3)
         #expect(runs.filter { $0.outcome == .cancelled }.count == 1)
-        #expect(Set(runs.flatMap(\.sources).map(\.snapshotID)).count == 4)
+        #expect(Set(runs.flatMap(\.sources).map(\.snapshotID)).count == 6)
         try assertNoPassword(root: root, password: password)
     }
 

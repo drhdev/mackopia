@@ -6,6 +6,33 @@ import Testing
 @testable import Persistence
 
 struct ConfiguredJobRunnerTests {
+    @Test func eventEvidenceRejectsPlanAndDestinationChangesBeforeEnqueue() async throws {
+        let fixture = try PreflightTestFixture()
+        let store = try await store(fixture)
+        let queue = JobQueue()
+        let runner = runner(fixture, store: store, queue: queue)
+        let original = try edited(fixture.plan, triggers: [.onVolumeMount])
+        try await store.save(configuration(fixture, plan: original))
+        let job = try await runner.enqueue(
+            plan: original, repository: fixture.repository, trigger: .onVolumeMount, requestedAt: .now)
+        #expect(await queue.takeNext() == job)
+        #expect(await queue.complete(job))
+        try await store.save(configuration(fixture, plan: edited(original, name: "Edited")))
+        await #expect(throws: JobAdmissionError.configurationChanged) {
+            try await runner.enqueue(
+                plan: original, repository: fixture.repository, trigger: .onVolumeMount, requestedAt: .now)
+        }
+        let changed = try Repository(
+            id: fixture.repository.id, name: "Edited destination", kind: fixture.repository.kind,
+            identity: fixture.repository.identity, secretRef: fixture.repository.secretRef)
+        try await store.save(BackupConfiguration(repositories: [changed], plans: [original]))
+        await #expect(throws: JobAdmissionError.configurationChanged) {
+            try await runner.enqueue(
+                plan: original, repository: fixture.repository, trigger: .onVolumeMount, requestedAt: .now)
+        }
+        #expect(await queue.takeNext() == nil)
+    }
+
     @Test func requestsRequireLoadedConfigurationEnabledPlanAndConfiguredAutomaticTrigger() async throws {
         let fixture = try PreflightTestFixture()
         let files = MemoryConfigFiles()

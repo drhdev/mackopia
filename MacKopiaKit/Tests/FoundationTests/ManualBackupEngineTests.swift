@@ -64,6 +64,42 @@ struct ManualBackupEngineTests {
         #expect(await service.closed)
     }
 
+    @Test(arguments: [0, 1, 2])
+    func queuePauseOrStopUsesSourceCancellationAndFinishesHistoryBeforeReturning(action: Int) async throws {
+        let fixture = try PreflightTestFixture()
+        let service = ManualBackupService(mode: .waitForCancellation)
+        let history = ManualHistoryFixture(service: service)
+        let queue = JobQueue()
+        let engine = try await engine(fixture, service: service, history: history, queue: queue)
+        let original = try await engine.enqueue(planID: fixture.plan.id)
+        let running = Task { try await engine.performNext() }
+        await service.waitUntilUpload()
+        switch action {
+        case 0: await queue.pause(planID: fixture.plan.id)
+        case 1: await queue.pause()
+        default: await queue.stop(planID: fixture.plan.id)
+        }
+        #expect(await service.cancellations == 1)
+        #expect(await service.uploaded.count == 1)
+        #expect(await service.closed)
+        #expect(await history.final?.outcome == .cancelled)
+        #expect(await queue.complete(original) == false)
+        await #expect(throws: CancellationError.self) { try await running.value }
+        if action == 2 {
+            #expect(await queue.takeNext() == nil)
+            #expect(await queue.isPaused(fixture.plan.id) == false)
+            _ = try await engine.enqueue(planID: fixture.plan.id)
+        } else {
+            await #expect(throws: JobAdmissionError.planPaused) { try await engine.enqueue(planID: fixture.plan.id) }
+            try await queue.resume(planID: action == 0 ? fixture.plan.id : nil, requestedAt: .now)
+        }
+        let next = try #require(await queue.takeNext())
+        #expect(next.id != original.id)
+        #expect(next.plan.id == original.plan.id)
+        #expect(await queue.complete(next))
+        #expect(await queue.takeNext() == nil)
+    }
+
     @Test func blockedPreflightRecordsSkipWithoutOpeningServer() async throws {
         let fixture = try PreflightTestFixture(scenario: PreflightTestScenario(sourceAccess: .unknown))
         let service = ManualBackupService()

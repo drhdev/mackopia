@@ -1,12 +1,18 @@
 import Foundation
 import IOKit.ps
 
-/// Reads one fresh IOKit snapshot. Continuous power notifications belong to the future trigger monitor.
+/// Reads one fresh IOKit snapshot; the continuous monitor uses the same conservative decoder.
 package actor LocalPowerStateSampler: PowerStateSampling {
     package init() {}
 
     package func samplePower() async throws -> PowerStateObservation {
         try Task.checkCancellation()
+        let result = Self.read()
+        try Task.checkCancellation()
+        return result
+    }
+
+    static func read() -> PowerStateObservation {
         let lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
         guard let snapshot = IOPSCopyPowerSourcesInfo()?.takeRetainedValue() else {
             return PowerStateObservation(onACPower: nil, sources: nil, lowPowerMode: lowPower)
@@ -35,7 +41,6 @@ package actor LocalPowerStateSampler: PowerStateSampling {
                 maximum: Self.integer(description[kIOPSMaxCapacityKey]),
                 isPresent: description[kIOPSIsPresentKey] as? Bool)
         }
-        try Task.checkCancellation()
         return PowerStateObservation(onACPower: onAC, sources: readings, lowPowerMode: lowPower)
     }
 
