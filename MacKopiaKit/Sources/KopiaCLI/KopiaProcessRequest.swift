@@ -6,6 +6,7 @@ struct KopiaProcessRequest: Sendable, CustomReflectable {
     let executable: URL
     let arguments: [String]
     var environment: [String: String]
+    var lowPriority: Bool = false
     var timeout: Duration = .seconds(120)
     var outputLimit: Int = 4 * 1024 * 1024
     var webDAVConfiguration: Data?

@@ -69,6 +69,13 @@ def main():
             pass
 
         def do_POST(self):
+            if self.path.startswith(("/api/v1/sources/upload?", "/api/v1/sources/cancel?")):
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = self.rfile.read(length) if length <= 1024 else None
+                if self.headers.get("Content-Type") != "application/json" or payload != b'{}':
+                    mark("invalid-upload-body")
+                self.do_GET()
+                return
             if self.path.startswith("/api/v1/policy/resolve?"):
                 mark("policy-resolve-request")
                 length = int(self.headers.get("Content-Length", "0"))
@@ -169,6 +176,26 @@ def main():
                     body = f'<meta name="kopia-csrf-token" content="{csrf}">'.encode()
                     self.send_response(200)
                     self.send_header("Set-Cookie", f"Kopia-Session-Cookie={cookie}; Path=/; Secure; HttpOnly")
+                    self.send_header("Content-Length", str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                    return
+                if mode.startswith("upload-"):
+                    selector = parse_qs(urlsplit(self.path).query)
+                    if selector != {"userName": ["user+tag"], "host": ["host+tag"],
+                                    "path": ["/Source ü + & ? # %2F"]}:
+                        mark("invalid-upload-selector")
+                    mark("upload-request" if "/upload?" in self.path else "cancel-request")
+                    key = "user+tag@host+tag:/Source ü + & ? # %2F"
+                    response = {"sources": {key: {"success": mode != "upload-rejected"}}}
+                    if mode == "upload-empty":
+                        response = {"sources": {}}
+                    if mode == "upload-foreign":
+                        response = {"sources": {"foreign": {"success": True}}}
+                    if mode == "upload-extra":
+                        response["sources"]["foreign"] = {"success": True}
+                    body = json.dumps(response).encode()
+                    self.send_response(200)
                     self.send_header("Content-Length", str(len(body)))
                     self.end_headers()
                     self.wfile.write(body)

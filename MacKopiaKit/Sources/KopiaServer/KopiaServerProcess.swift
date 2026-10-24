@@ -23,17 +23,18 @@ actor KopiaServerProcess {
         transport = KopiaServerTransport(clock: clock, grace: shutdownGrace)
     }
 
-    func start(configuration: KopiaServerConfiguration) async throws -> KopiaServerHandshake {
+    func start(configuration: KopiaServerConfiguration, lowPriority: Bool = false) async throws -> KopiaServerHandshake
+    {
         try await start(
             executable: configuration.executable, arguments: configuration.arguments,
             environment: configuration.environment, webDAVConfiguration: configuration.webDAVConfiguration,
-            repositoryDirectory: configuration.repositoryDirectory)
+            repositoryDirectory: configuration.repositoryDirectory, lowPriority: lowPriority)
     }
 
     /// Low-level seam for process lifecycle tests; production callers use the typed configuration.
     func start(
         executable: URL, arguments: [String], environment: [String: String],
-        webDAVConfiguration: Data? = nil, repositoryDirectory: URL? = nil
+        webDAVConfiguration: Data? = nil, repositoryDirectory: URL? = nil, lowPriority: Bool = false
     ) async throws -> KopiaServerHandshake {
         guard lifecycle == nil, !stopping, handshakeTimeout > .zero else { throw KopiaServerProcessError.startFailed }
         try Task.checkCancellation()
@@ -46,6 +47,7 @@ actor KopiaServerProcess {
             try await transport.run(
                 executable: executable, arguments: arguments, environment: environment,
                 webDAVConfiguration: webDAVConfiguration, repositoryDirectory: repositoryDirectory,
+                lowPriority: lowPriority,
                 standardError: receive)
         }
         self.lifecycle = lifecycle

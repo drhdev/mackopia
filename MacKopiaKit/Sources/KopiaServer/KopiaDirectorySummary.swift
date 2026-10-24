@@ -1,10 +1,10 @@
 import Foundation
 
-struct KopiaDirectorySummary: Decodable, Sendable {
-    let size: Int64?
-    let files: Int64?
-    let symlinks: Int64?
-    let dirs: Int64?
-    let numFailed: Int64?
-    let maxTime: String?
+package struct KopiaDirectorySummary: Decodable, Sendable {
+    package let size: Int64?
+    package let files: Int64?
+    package let symlinks: Int64?
+    package let dirs: Int64?
+    package let numFailed: Int64?
+    package let maxTime: String?
 }

@@ -1,14 +1,14 @@
 import Foundation
 
-struct KopiaSnapshot: Decodable, Sendable, CustomReflectable {
-    let id: String?
-    let startTime: String?
-    let endTime: String?
-    let rootID: String?
-    let incomplete: String?
-    let summary: KopiaDirectorySummary?
-    let retention: [String]?
-    let pins: [String]?
+package struct KopiaSnapshot: Decodable, Sendable, CustomReflectable {
+    package let id: String?
+    package let startTime: String?
+    package let endTime: String?
+    package let rootID: String?
+    package let incomplete: String?
+    package let summary: KopiaDirectorySummary?
+    package let retention: [String]?
+    package let pins: [String]?
 
-    var customMirror: Mirror { Mirror(self, children: ["snapshot": "<private>"]) }
+    package var customMirror: Mirror { Mirror(self, children: ["snapshot": "<private>"]) }
 }

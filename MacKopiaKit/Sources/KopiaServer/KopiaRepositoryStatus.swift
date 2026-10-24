@@ -1,8 +1,8 @@
 import Foundation
 
 /// Unknown fields are ignored; absent fields remain unknown rather than implying a healthy backup.
-struct KopiaRepositoryStatus: Decodable, Sendable {
-    let connected: Bool?
-    let formatVersion: Int?
-    let storage: String?
+package struct KopiaRepositoryStatus: Decodable, Sendable {
+    package let connected: Bool?
+    package let formatVersion: Int?
+    package let storage: String?
 }

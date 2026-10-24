@@ -20,7 +20,7 @@ package actor KopiaServerTransport {
 
     package func run(
         executable: URL, arguments: [String], environment: [String: String],
-        webDAVConfiguration: Data? = nil, repositoryDirectory: URL? = nil,
+        webDAVConfiguration: Data? = nil, repositoryDirectory: URL? = nil, lowPriority: Bool = false,
         standardError: @escaping @Sendable (Data) async throws -> Void
     ) async throws -> Int32 {
         guard !started, grace > .zero else { throw KopiaProcessError.invalidRequest }
@@ -29,7 +29,8 @@ package actor KopiaServerTransport {
         let request = try KopiaProcess.validated(
             KopiaProcessRequest(
                 executable: executable, arguments: arguments, environment: environment,
-                webDAVConfiguration: webDAVConfiguration, repositoryDirectory: repositoryDirectory))
+                lowPriority: lowPriority, webDAVConfiguration: webDAVConfiguration,
+                repositoryDirectory: repositoryDirectory))
         let control = self.control
         let shutdownRequested = self.shutdownRequested
         let clock = self.clock

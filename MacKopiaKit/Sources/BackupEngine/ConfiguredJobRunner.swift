@@ -2,7 +2,7 @@ import BackupDomain
 import Foundation
 import Persistence
 
-/// Explicit execution boundary; this does not install a scheduler or connect production Kopia operations.
+/// Explicit execution boundary; the caller supplies operations, scheduling, and agent composition.
 package struct ConfiguredJobRunner: Sendable {
     private let store: ConfigStore
     private let queue: JobQueue
@@ -26,11 +26,31 @@ package struct ConfiguredJobRunner: Sendable {
     package func performNext<Value: Sendable>(
         operation: @escaping @Sendable (BackupPlan, Repository, [BackupSource]) async throws -> Value
     ) async throws -> BackupOperationResult<Value>? {
+        try await performNextJob { job, repository, sources in
+            try await operation(job.plan, repository, sources)
+        } finalized: { _, _ in
+        }
+    }
+
+    /// Finalization runs after protection cleanup and before queue release, including rejected admissions.
+    package func performNextJob<Value: Sendable>(
+        admitted: @escaping @Sendable (BackupJob) async throws -> Void = { _ in },
+        operation: @escaping @Sendable (BackupJob, Repository, [BackupSource]) async throws -> Value,
+        finalized: @escaping @Sendable (BackupJob, Result<BackupOperationResult<Value>, any Error>) async throws -> Void
+    ) async throws -> BackupOperationResult<Value>? {
         try Task.checkCancellation()
         guard let job = await queue.takeNext() else { return nil }
+        do { try await admitted(job) } catch {
+            await queue.complete(job)
+            throw error
+        }
+        var currentJob = job
+        let outcome: Result<BackupOperationResult<Value>, any Error>
         do {
             let configuration = try await store.currentConfiguration()
             let (plan, repository) = try Self.resolve(planID: job.plan.id, trigger: job.trigger, in: configuration)
+            let executionJob = BackupJob(id: job.id, plan: plan, trigger: job.trigger, requestedAt: job.requestedAt)
+            currentJob = executionJob
             let result = try await coordinator.perform(plan: plan, repository: repository) { sources in
                 let latest: BackupConfiguration
                 do {
@@ -46,14 +66,20 @@ package struct ConfiguredJobRunner: Sendable {
                     throw JobAdmissionError.configurationChanged
                 }
                 try Task.checkCancellation()
-                return try await operation(plan, repository, sources)
+                return try await operation(executionJob, repository, sources)
             }
-            await queue.complete(job)
-            return result
+            outcome = .success(result)
+        } catch {
+            outcome = .failure(error)
+        }
+        do {
+            try await finalized(currentJob, outcome)
         } catch {
             await queue.complete(job)
             throw error
         }
+        await queue.complete(job)
+        return try outcome.get()
     }
 
     private static func resolve(

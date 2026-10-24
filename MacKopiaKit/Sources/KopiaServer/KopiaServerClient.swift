@@ -1,7 +1,7 @@
 import Foundation
 
 /// Cookies and credentials stay private; complete policies use a bounded, redacted document.
-package actor KopiaServerClient: KopiaPolicyServing {
+package actor KopiaServerClient: KopiaBackupServing {
     private let handshake: KopiaServerHandshake
     private let session: URLSession
     private var csrf: KopiaServerCSRFSession?
@@ -26,7 +26,7 @@ package actor KopiaServerClient: KopiaPolicyServing {
 
     deinit { session.invalidateAndCancel() }
 
-    func close() {
+    package func close() {
         closed = true
         csrf = nil
         bootstrap?.cancel()
@@ -35,7 +35,7 @@ package actor KopiaServerClient: KopiaPolicyServing {
         session.invalidateAndCancel()
     }
 
-    func repositoryStatus() async throws -> KopiaRepositoryStatus {
+    package func repositoryStatus() async throws -> KopiaRepositoryStatus {
         try await get(.repositoryStatus)
     }
 
@@ -54,7 +54,7 @@ package actor KopiaServerClient: KopiaPolicyServing {
         guard !closed else { throw KopiaServerClientError.closed }
     }
 
-    func sources() async throws -> KopiaSources {
+    package func sources() async throws -> KopiaSources {
         try await get(.sources)
     }
 
@@ -66,8 +66,30 @@ package actor KopiaServerClient: KopiaPolicyServing {
         try await get(.task(id))
     }
 
-    func snapshots(source: KopiaSnapshotSource) async throws -> KopiaSnapshots {
+    package func snapshots(source: KopiaSnapshotSource) async throws -> KopiaSnapshots {
         try await get(.snapshots(source))
+    }
+
+    package func snapshotManifests(source: KopiaSnapshotSource) async throws -> KopiaSnapshots {
+        try await get(.snapshotManifests(source))
+    }
+
+    package func startUpload(source: KopiaSnapshotSource) async throws {
+        try await changeUpload(.upload(source), source: source)
+    }
+
+    package func cancelUpload(source: KopiaSnapshotSource) async throws {
+        try await changeUpload(.cancelUpload(source), source: source)
+    }
+
+    private func changeUpload(_ route: KopiaServerRoute, source: KopiaSnapshotSource) async throws {
+        struct Result: Decodable { let success: Bool? }
+        struct Response: Decodable { let sources: [String: Result]? }
+        let data = try await read(route, method: "POST", body: Data("{}".utf8))
+        guard let response = try? JSONDecoder().decode(Response.self, from: data),
+            let results = response.sources, results.count == 1,
+            results[source.userName + "@" + source.host + ":" + source.path]?.success == true
+        else { throw KopiaServerClientError.response }
     }
 
     func policy(source: KopiaSnapshotSource) async throws -> KopiaPolicy? {

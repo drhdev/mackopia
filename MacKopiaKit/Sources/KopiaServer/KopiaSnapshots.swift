@@ -1,9 +1,9 @@
 import Foundation
 
-struct KopiaSnapshots: Decodable, Sendable, CustomReflectable {
-    let snapshots: [KopiaSnapshot]?
-    let unfilteredCount: Int64?
-    let uniqueCount: Int64?
+package struct KopiaSnapshots: Decodable, Sendable, CustomReflectable {
+    package let snapshots: [KopiaSnapshot]?
+    package let unfilteredCount: Int64?
+    package let uniqueCount: Int64?
 
-    var customMirror: Mirror { Mirror(self, children: ["snapshots": "<private>"]) }
+    package var customMirror: Mirror { Mirror(self, children: ["snapshots": "<private>"]) }
 }

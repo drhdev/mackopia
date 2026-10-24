@@ -528,8 +528,8 @@ oder blinde Wiederholung auslösen. Fehler/Abbruch während oder nach PUT bedeut
 ungeklärten Schreibausgang; vor dem nächsten Versuch wird frisch gelesen. Fremde JSON-Felder bleiben
 im übertragenen Dokument erhalten; verwirft der gepinnte Server unbekannte Felder, schlägt die
 Definitionsnachprüfung fehl. Es gibt keine Zusage, dass Kopia unbekannte Erweiterungen persistiert.
-Der Abgleich startet keine Snapshots und führt keine Aufbewahrungs-/Löschaktion aus; die produktive
-Job-/Agent-Verdrahtung folgt im nächsten Batch.
+Der Abgleich startet selbst keine Snapshots und führt keine Aufbewahrungs-/Löschaktion aus.
+Der explizite manuelle Engine-Pfad (§7.5) ruft ihn vor Uploads auf; die Agent-Laufzeitverdrahtung folgt separat.
 
 Plan-Metadaten werden auch beim Decoding validiert: nichtleere Quellen-/Triggerlisten, eindeutige Quell-IDs
 und wörtliche Quellpfade pro Plan, gültige Uhrzeiten/Wochentage, positive Intervalle und geordnete positive
@@ -644,7 +644,41 @@ manuelle Anfragen sind für jeden aktivierten Plan erlaubt. Beim Start ersetzt d
 Planstand. Direkt vor dem Operations-Callback wird nach allen suspendierenden Vorabprüfungen nochmals
 Plan-/Speicherzielgleichheit geprüft. Die Laufkennung wird auf jedem Ausgang erst nach abgeschlossener
 Operations-/Schutzbereinigung freigegeben. Dies ist keine Sperre gegen Konfigurationsänderungen während
-einer bereits gestarteten Operation; kein Scheduler, keine Agent-Verdrahtung und keine produktive Kopia-Aktion.
+einer bereits gestarteten Operation. Der generische Runner startet selbst keine Prozesse; der folgende
+manuelle Engine-Pfad liefert den konkreten Operations-Callback. Scheduler und Agent-Laufzeitverdrahtung folgen separat.
+
+`ManualBackupEngine` verbindet diesen Runner explizit mit einer Dateisystem-Server-Sitzung: Secret frisch
+auflösen, isolierte reguläre 0600-Konfiguration auf Zielpfad, gespeicherte Identität und deaktivierte Kopia-Actions
+prüfen, Server starten, verbundenes Backend und Serveridentität bestätigen, alle Quell-Policies prüfen und
+Quellen sequenziell sichern. Direkt vor jeder Quelle werden die Policies einschließlich Ausschlussresolvern
+frisch geprüft. Eine erfolgreiche Upload-Antwort bestätigt nur die Annahme; Erfolg benötigt IDLE, eine neue
+vollständige Snapshot-ID, deren eindeutig zugeordnetes gespeichertes Manifest und gültige Datei-/Byte-/Fehlerzähler. Kopia 0.23.1 fasst
+in der normalen Snapshot-Liste identische Wurzeln zusammen; die Engine verwendet deshalb `all=true` für
+Baseline und Abschlussnachweis. Auch unveränderte Folgeläufe erhalten so den richtigen Manifestbezug.
+
+Fortschritt kommt quellgebunden höchstens einmal pro Sekunde mit optionalen Zählern; negative/fehlende
+Zähler bleiben unbekannt. Byte-Durchsatz wird über ein 30-Sekunden-Fenster mit EWMA α=0,2 geglättet;
+ETA erscheint erst nach 15 Sekunden gültiger Beobachtung. Es wird keine Upload-Mindestmenge vorausgesetzt.
+Abbruch stoppt die aktuelle Quelle und überspringt die restlichen Quellen. Cancel-Anfrage plus IDLE-Bestätigung
+haben zusammen ein kooperatives 30-Sekunden-Budget; bei fehlender Bestätigung wird dies in der Historie
+vermerkt und die Server-Beendigung übernimmt die vorhandene stdin-/Signal-Eskalation mit Reaping.
+Server-/Volume-Schutzbereinigung und abschließender Historienversuch enden vor Freigabe der Queue-Laufkennung.
+
+`HistoryStore` verwendet GRDB 7.11.1, SQLite-Schema `history-v1`, private 0700-Verzeichnisse und 0600-Dateien.
+Ein eindeutiger `running`-Eintrag wird vor der Startprüfung persistiert; genau ein terminaler Abschluss enthält
+Plan-/Speicherziel-/Lauf-UUID, Trigger, Zeiten, Snapshot-/Root-IDs je abgeschlossener Quelle und deren Statistik
+sowie ausschließlich feste Fehlercodes. Secrets, Rohdiagnostik und Quellpfade werden nicht gespeichert.
+Schlägt der Starteintrag fehl, beginnt keine Operation; schlägt der Abschlusseintrag fehl, meldet der Aufrufer
+einen Fehler statt Erfolg. Nicht abgeschlossene Einträge bleiben nach einem Prozessabsturz als `running`
+sichtbar, ohne automatische Wiederaufnahme oder Erfolgsbehauptung. Automatische Crash-Abstimmung,
+Logdatei-Verknüpfung und die Aktivitätsoberfläche folgen separat.
+
+Der manuelle Durchstich unterstützt Dateisystem-Ziele und normale bzw. niedrige Prozesspriorität
+(`QOS_CLASS_BACKGROUND` bereits bei `posix_spawn`). Noch nicht verdrahtete explizite Parallelitäts-/Bandbreiten-
+und Auswerfen-Optionen blockieren vor dem Serverstart, statt still ignoriert zu werden. Netzwerkziele,
+Scheduler/Retry/Pause-Resume, Plausibilitätsprüfung/Pinning und XPC-Komposition bleiben den weiteren Batches
+zugeordnet. Die produktive Quellfreigabe bleibt ohne signierten FDA-/Kindprozessnachweis gesperrt;
+der Integrationstest autorisiert ausschließlich selbst erzeugte temporäre Quellen über einen Testadapter.
 
 - **Retry-Strategie** bei transienten Fehlern (Netzwerk, Timeout, Ziel kurz weg): exponentiell 1 → 5 → 15 Min.,
   max. 3 Versuche, danach `failed` + Mitteilung. Nicht-transiente Fehler (falsches Passwort, Repo nicht gefunden,
@@ -1205,6 +1239,7 @@ Fehler-Mapping gehört in **eine** Datei mit Tests pro Zeile.
 
 | Datum | Entscheidung | Grund |
 |---|---|---|
+| 2026-10-24 | Manueller Dateisystem-Engine-Durchstich und GRDB 7.11.1 für dauerhafte Laufhistorie | Nutzer hat die GRDB-Abhängigkeit ausdrücklich freigegeben. §7.5 verbindet Queue/Config/Schutz, Policy-Abgleich, Server, Quellen und Historie; keine Agent-/TCC-Ausnahme. [Kopia 0.23.1](https://github.com/kopia/kopia/blob/v0.23.1/internal/server/api_snapshots.go) liefert ohne `all=true` nur nach Wurzel zusammengefasste Snapshots; vollständige Manifestliste verhindert falsche Fehlbewertung identischer Folgeläufe. Offene erweiterte Laufoptionen blockieren ausdrücklich. |
 | 2026-10-24 | Agent-Aufträge als vollständige Ausführungsbatches gemäß §14; Phasen bleiben Abnahmegates | Nutzer hat den Vorschlag größerer zusammenhängender Läufe zur Umsetzung freigegeben; weniger wiederholte Kontext-/Prüf-/Hand-off-Schritte, vollständige Verdrahtung pro Batch |
 | 2026-10-24 | Policy-Abgleich mit nichtpersistierender Vorschau, erneuten Leseprüfungen und Nachprüfung; kein Plan-Hash-Cache und keine automatische Rückschreibung | Kopia 0.23.1 unterstützt `resolve.updates`, aber keinen bedingten PUT. Vererbung/Ausschlüsse können unabhängig vom Plan wechseln; externe Schreibrennen bleiben ausdrücklich möglich. Scheduling bleibt unverändert; unwirksame Sollwerte blockieren |
 | 2026-10-24 | macOS-Standardmuster Version 1 werden quellbezogen projiziert und an der Quellwurzel verankert | Verhindert Ausschlüsse gleichnamiger Library-Verzeichnisse außerhalb des übergebenen Home. Quellen innerhalb ausgeschlossener Home-Unterbäume liefern explizit `**`; optionale Regeln und Dateisystem-/Time-Machine-Auflösung bleiben separat. |

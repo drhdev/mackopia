@@ -23,6 +23,20 @@ struct KopiaProcessTests {
             ])
     }
 
+    @Test func lowPriorityIsAppliedAtSpawn() async throws {
+        let root = try temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        var invocation = request(
+            root,
+            script:
+                "import ctypes,sys; lib=ctypes.CDLL('/usr/lib/libSystem.B.dylib'); sys.stdout.write(str(lib.qos_class_self()))"
+        )
+        invocation.lowPriority = true
+        let result = try await KopiaProcess().run(invocation)
+        #expect(result.exitCode == 0)
+        #expect(String(decoding: result.standardOutput, as: UTF8.self) == String(QOS_CLASS_BACKGROUND.rawValue))
+    }
+
     @Test func drainsBothPipesBeyondKernelCapacity() async throws {
         let root = try temporaryRoot()
         defer { try? FileManager.default.removeItem(at: root) }

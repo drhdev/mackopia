@@ -149,6 +149,30 @@ struct ConfiguredJobRunnerTests {
         }
     }
 
+    @Test func historyFinalizationKeepsPlanReservedUntilItFinishes() async throws {
+        let fixture = try PreflightTestFixture()
+        let store = try await store(fixture)
+        let queue = JobQueue()
+        let runner = runner(fixture, store: store, queue: queue)
+        let finalizing = AdmissionSignal()
+        let release = AdmissionSignal()
+        _ = try await runner.enqueue(planID: fixture.plan.id, trigger: .manual, requestedAt: .now)
+        let task = Task {
+            try await runner.performNextJob { _, _, _ in
+                true
+            } finalized: { _, _ in
+                await finalizing.signal()
+                await release.wait()
+            }
+        }
+        await finalizing.wait()
+        let followUp = try await runner.enqueue(planID: fixture.plan.id, trigger: .manual, requestedAt: .now)
+        #expect(await queue.takeNext() == nil)
+        await release.signal()
+        guard case .completed = try await task.value else { Issue.record("Expected completed run"); return }
+        #expect(await queue.takeNext() == followUp)
+    }
+
     private func runner(
         _ fixture: PreflightTestFixture, store: ConfigStore, queue: JobQueue = JobQueue(),
         protection: AdmissionProtection = AdmissionProtection()

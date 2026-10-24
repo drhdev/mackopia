@@ -17,6 +17,11 @@ struct KopiaChildProcess: Sendable {
         defer { posix_spawn_file_actions_destroy(&actions) }
         guard posix_spawnattr_init(&attributes) == 0 else { throw KopiaProcessError.launchFailed }
         defer { posix_spawnattr_destroy(&attributes) }
+        if request.lowPriority {
+            guard posix_spawnattr_set_qos_class_np(&attributes, QOS_CLASS_BACKGROUND) == 0 else {
+                throw KopiaProcessError.launchFailed
+            }
+        }
         var descriptors: [Int32] = []
         var inputReader: Int32 = -1
         var inputWriter: Int32 = -1

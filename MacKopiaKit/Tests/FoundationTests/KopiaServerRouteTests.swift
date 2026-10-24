@@ -23,6 +23,8 @@ struct KopiaServerRouteTests {
         for (route, path) in [
             (KopiaServerRoute.policy(source), "/api/v1/policy"),
             (.resolvePolicy(source), "/api/v1/policy/resolve"),
+            (.upload(source), "/api/v1/sources/upload"),
+            (.cancelUpload(source), "/api/v1/sources/cancel"),
         ] {
             let policyURL = try route.url(relativeTo: base)
             let policyQuery = try #require(URLComponents(url: policyURL, resolvingAgainstBaseURL: false))

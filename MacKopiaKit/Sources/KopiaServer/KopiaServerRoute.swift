@@ -1,12 +1,13 @@
 import Foundation
 
-/// Only these read-only routes may receive the child process credentials.
+/// Only validated, typed routes may receive the child process credentials.
 enum KopiaServerRoute: Sendable {
     case root, repositoryStatus, sources, tasks
     case task(String)
-    case snapshots(KopiaSnapshotSource)
+    case snapshots(KopiaSnapshotSource), snapshotManifests(KopiaSnapshotSource)
     case policy(KopiaSnapshotSource), resolvePolicy(KopiaSnapshotSource)
     case directory(String)
+    case upload(KopiaSnapshotSource), cancelUpload(KopiaSnapshotSource)
 
     func url(relativeTo base: URL) throws -> URL {
         let path: String
@@ -22,8 +23,11 @@ enum KopiaServerRoute: Sendable {
         case .directory(let id):
             try Self.validateSegment(id, limit: 512)
             path = "api/v1/objects/" + id
-        case .snapshots(let source), .policy(let source), .resolvePolicy(let source):
+        case .snapshots(let source), .snapshotManifests(let source), .policy(let source), .resolvePolicy(let source),
+            .upload(let source), .cancelUpload(let source):
             switch self {
+            case .upload: path = "api/v1/sources/upload"
+            case .cancelUpload: path = "api/v1/sources/cancel"
             case .policy: path = "api/v1/policy"
             case .resolvePolicy: path = "api/v1/policy/resolve"
             default: path = "api/v1/snapshots"
@@ -33,6 +37,8 @@ enum KopiaServerRoute: Sendable {
                 URLQueryItem(name: "host", value: source.host),
                 URLQueryItem(name: "path", value: source.path),
             ]
+            // Kopia 0.23.1: default listing collapses identical roots and can hide the new manifest ID.
+            if case .snapshotManifests = self { query.append(URLQueryItem(name: "all", value: "true")) }
         }
         let url = base.appendingPathComponent(path)
         guard !query.isEmpty else { return url }

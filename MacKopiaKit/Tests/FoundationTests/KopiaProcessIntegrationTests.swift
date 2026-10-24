@@ -9,7 +9,7 @@ extension Tag {
     @Tag static var integration: Self
 }
 
-private enum NativeKopiaFixture {
+enum NativeKopiaFixture {
     static let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
         .deletingLastPathComponent().deletingLastPathComponent()
     struct Pin: Decodable { let version: String }
