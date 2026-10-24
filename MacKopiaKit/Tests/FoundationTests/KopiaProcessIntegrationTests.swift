@@ -142,6 +142,13 @@ struct KopiaProcessIntegrationTests {
         let source = root.appendingPathComponent("Quelle ü + & ? # %2F")
         try FileManager.default.createDirectory(at: source, withIntermediateDirectories: false)
         try Data("native source fixture".utf8).write(to: source.appendingPathComponent("hello.txt"))
+        let policyRequest = KopiaProcessRequest(
+            executable: NativeKopiaFixture.binary,
+            arguments: Array(statusRequest.arguments.dropLast(3)) + [
+                "policy", "set", source.path, "--keep-latest=10", "--keep-annual=0", "--add-ignore=*.tmp",
+                "--compression=zstd",
+            ], environment: statusRequest.environment)
+        #expect(try await process.run(policyRequest).exitCode == 0)
         let snapshotRequest = KopiaProcessRequest(
             executable: NativeKopiaFixture.binary,
             arguments: Array(statusRequest.arguments.dropLast(3)) + ["snapshot", "create", source.path, "--json"],
@@ -167,6 +174,19 @@ struct KopiaProcessIntegrationTests {
             #expect(listedSource.lastSnapshot?.stats?.totalSize == 21)
             #expect(listedSource.lastSnapshot?.incomplete == nil)
             let selector = try KopiaSnapshotSource(userName: "test-user", host: "test-host", path: source.path)
+            let definedPolicy = try #require(try await client.policy(source: selector))
+            #expect(definedPolicy.retention?.keepLatest == 10)
+            #expect(definedPolicy.retention?.keepAnnual == 0)
+            #expect(definedPolicy.files?.ignore == ["*.tmp"])
+            let resolvedPolicy = try await client.resolvePolicy(source: selector)
+            #expect(resolvedPolicy.defined?.retention?.keepDaily == nil)
+            #expect(resolvedPolicy.effective?.retention?.keepDaily != nil)
+            #expect(resolvedPolicy.effective?.retention?.keepAnnual == 0)
+            #expect(resolvedPolicy.effective?.compression?.compressorName == "zstd")
+            #expect(resolvedPolicy.definition?.files?["ignore"]?.path == source.path)
+            let childSelector = try KopiaSnapshotSource(
+                userName: "test-user", host: "test-host", path: source.path + "/child")
+            #expect(try await client.policy(source: childSelector) == nil)
             let snapshotList = try await client.snapshots(source: selector)
             let snapshot = try #require(snapshotList.snapshots?.first)
             #expect(snapshotList.snapshots?.count == 1)

@@ -1,0 +1,27 @@
+{
+  "retention": {
+    "keepLatest": 10,
+    "keepAnnual": 0
+  },
+  "files": {
+    "ignore": [
+      "*.tmp"
+    ]
+  },
+  "errorHandling": {},
+  "scheduling": {},
+  "compression": {
+    "compressorName": "zstd"
+  },
+  "metadataCompression": {},
+  "splitter": {},
+  "actions": {},
+  "osSnapshots": {
+    "volumeShadowCopy": {}
+  },
+  "logging": {
+    "directories": {},
+    "entries": {}
+  },
+  "upload": {}
+}

@@ -466,6 +466,18 @@ Ein Dateisystem-Ziel ohne gebundene Volume-Identität ist lediglich vorbereitete
 gesetzt (idempotent, vor jedem Lauf abgeglichen, wenn sich der Plan-Hash geändert hat). Gehören zwei Pläne zur gleichen
 Quelle im selben Repo, ist das ein Validierungsfehler im Editor (sonst würden sich die Policies überschreiben).
 
+Der native Serverclient liest quellbezogene Definitionen mit `GET /api/v1/policy` und berechnet die effektive
+Policy mit `POST /api/v1/policy/resolve`. Beide verlangen die vollständige Identität `userName`/`host`/`path`
+und verwenden denselben gepinnten TLS-/CSRF-Transport wie die übrigen Lesezugriffe. Der POST-Body ist fest
+auf `numUpcomingSnapshotTimes: 0` begrenzt, enthält keine `updates` und setzt keine Kopia-Zeitpläne.
+Kopia 0.23.1 meldet eine fehlende Definition mit HTTP 400 und Code `NOT_FOUND`; ausschließlich diese Kombination
+beim Definitionsabruf ergibt `nil`. Andere Fehler und übergroße Antworten bleiben Fehler. Typisierte, nur
+decodierbare Projektionen lesen Aufbewahrung, Dateiregeln, Kompression sowie deren Vererbungsursprünge;
+fehlend, null, 0 und false werden nicht durch vermeintliche Standardwerte ersetzt. Globale Ursprünge dürfen
+leere Identitätskomponenten enthalten. Unbekannte Felder werden ignoriert; diese unvollständigen Projektionen
+dürfen niemals zum Zurückschreiben einer Policy verwendet werden. Übersetzung/Schreibabgleich und Agent-
+Anbindung bleiben separat offen; kein automatisches Anwenden oder Löschen von Backups in diesem Lesepfad.
+
 Plan-Metadaten werden auch beim Decoding validiert: nichtleere Quellen-/Triggerlisten, eindeutige Quell-IDs
 und wörtliche Quellpfade pro Plan, gültige Uhrzeiten/Wochentage, positive Intervalle und geordnete positive
 Health-Schwellen. Health-Dauern werden verlustfrei als Sekunden-/Attosekunden-Paar gespeichert.
@@ -1112,6 +1124,7 @@ Fehler-Mapping gehört in **eine** Datei mit Tests pro Zeile.
 | 2026-10-23 | Reservierte Operationsgrenze mit frischer Wiederprüfung und verpflichtendem Live-Schutz ergänzt | §9: Sperre bis nach Operations-/Monitor-Cleanup halten, nach Aktivierung des Schutzes erneut prüfen und Identitäten unmittelbar vor Callback prüfen; fehlender Schutz verweigert Start. Noch keine produktive Kopia-/Agent-Anbindung, Schutzadapter aktuell nur in Tests. |
 | 2026-10-24 | Nativen lokalen Volume-Schutz über DiskArbitration als expliziten Adapter ergänzt; APFS-Gerät per statfs auflösen | §9: lokale UUID-/Mountbestätigung, Unmount-Veto, terminale Verlustereignisse und Cleanup unter bestehender Reservierung; schwache Callback-Kennungen verhindern späte Zeigerzugriffe. Neu verfügbare ungeschützte Quellen/Netzwerk-Volumes blockieren; Agent-/Benachrichtigungs-UX und echte Eject-Abnahme offen. |
 | 2026-10-24 | Expliziten Quellzugriffsadapter mit echten begrenzten Leseversuchen und separater geschützter Datenprobe ergänzt | §9: fehlende/unklare Probe blockiert, keine Inhaltsausgabe oder rekursive Lesbarkeitsgarantie. Konservativer experimenteller FDA-Nachweis für alle Quellen; Standard bleibt unbekannt, bis signierte Agent-/Kindprozess-Zuordnung geprüft ist. |
+| 2026-10-24 | Nativen Policy-Lesepfad einschließlich effektiver Auflösung gegen Kopia 0.23.1 geprüft | §7.1: vollständige Quellidentität, lesender POST ohne Updates/Zeitpläne, fehlende Definition nur bei HTTP 400 + NOT_FOUND; getrennte definierte/effektive Werte und Ursprünge. Decodable-Projektionen sind keine Schreibmodelle. |
 | … | *(Spike-Ergebnisse aus Phase 0 hier eintragen)* | |
 
 ---

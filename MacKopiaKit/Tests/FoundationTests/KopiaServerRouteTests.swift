@@ -20,6 +20,16 @@ struct KopiaServerRouteTests {
         #expect(components.queryItems?.first { $0.name == "path" }?.value == source.path)
         #expect(components.percentEncodedQuery?.contains("+") == false)
         #expect(components.percentEncodedQuery?.contains("%2B") == true)
+        for (route, path) in [
+            (KopiaServerRoute.policy(source), "/api/v1/policy"),
+            (.resolvePolicy(source), "/api/v1/policy/resolve"),
+        ] {
+            let policyURL = try route.url(relativeTo: base)
+            let policyQuery = try #require(URLComponents(url: policyURL, resolvingAgainstBaseURL: false))
+            #expect(policyURL.path == path)
+            #expect(policyQuery.queryItems == components.queryItems)
+            #expect(policyQuery.percentEncodedQuery == components.percentEncodedQuery)
+        }
         #expect(!String(reflecting: source).contains("Quelle"))
     }
 

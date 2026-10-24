@@ -2,6 +2,7 @@
 
 import base64
 import hashlib
+import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import os
 from pathlib import Path
@@ -11,6 +12,7 @@ import ssl
 import subprocess
 import sys
 import threading
+from urllib.parse import parse_qs, urlsplit
 
 LIMIT = 4 * 1024 * 1024
 
@@ -67,6 +69,15 @@ def main():
             pass
 
         def do_POST(self):
+            if self.path.startswith("/api/v1/policy/resolve?"):
+                mark("policy-resolve-request")
+                length = int(self.headers.get("Content-Length", "0"))
+                valid = (length <= 1024 and self.headers.get("Content-Type") == "application/json"
+                         and json.loads(self.rfile.read(length)) == {"numUpcomingSnapshotTimes": 0})
+                if not valid:
+                    mark("invalid-policy-body")
+                self.do_GET()
+                return
             mark("control-request")
             valid = (self.path == "/api/v1/control/shutdown"
                      and self.headers.get("Authorization") == control_authorization
@@ -146,6 +157,28 @@ def main():
                     self.send_response(200)
                     self.send_header("Set-Cookie", f"Kopia-Session-Cookie={cookie}; Path=/; Secure; HttpOnly")
                     self.send_header("Content-Length", str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                    return
+                if mode.startswith("policy-"):
+                    mark("policy-request")
+                    selector = parse_qs(urlsplit(self.path).query)
+                    if selector != {"userName": ["user+tag"], "host": ["host+tag"],
+                                    "path": ["/Source ü + & ? # %2F"]}:
+                        mark("invalid-policy-selector")
+                    status = 200
+                    body = b'{"retention":{"keepLatest":0}}'
+                    if "/resolve?" in self.path:
+                        body = b'{"defined":{},"effective":{"retention":{"keepLatest":0}}}'
+                    if mode != "policy-read":
+                        status = 404 if mode == "policy-http404" else 400
+                        body = b'{"code":"NOT_FOUND","error":"private details"}'
+                    if mode == "policy-wrong-error":
+                        body = b'{"code":"NOT_CONNECTED","error":"private details"}'
+                    if mode == "policy-malformed":
+                        body = b'{"code":[]}'
+                    self.send_response(status)
+                    self.send_header("Content-Length", str(LIMIT + 1 if mode == "policy-oversized" else len(body)))
                     self.end_headers()
                     self.wfile.write(body)
                     return

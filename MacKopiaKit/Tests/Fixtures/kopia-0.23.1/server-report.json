@@ -10,6 +10,9 @@
     "estimateTask": true,
     "restoreBytesMatch": true,
     "stdinEOFShutdown": true,
-    "credentialsNotPersisted": true
+    "credentialsNotPersisted": true,
+    "sourcePolicyRead": true,
+    "effectivePolicyReadOnlyResolve": true,
+    "missingPolicyIs400NotFound": true
   }
 }

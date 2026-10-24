@@ -5,6 +5,7 @@ enum KopiaServerRoute: Sendable {
     case root, repositoryStatus, sources, tasks
     case task(String)
     case snapshots(KopiaSnapshotSource)
+    case policy(KopiaSnapshotSource), resolvePolicy(KopiaSnapshotSource)
     case directory(String)
 
     func url(relativeTo base: URL) throws -> URL {
@@ -21,8 +22,12 @@ enum KopiaServerRoute: Sendable {
         case .directory(let id):
             try Self.validateSegment(id, limit: 512)
             path = "api/v1/objects/" + id
-        case .snapshots(let source):
-            path = "api/v1/snapshots"
+        case .snapshots(let source), .policy(let source), .resolvePolicy(let source):
+            switch self {
+            case .policy: path = "api/v1/policy"
+            case .resolvePolicy: path = "api/v1/policy/resolve"
+            default: path = "api/v1/snapshots"
+            }
             query = [
                 URLQueryItem(name: "userName", value: source.userName),
                 URLQueryItem(name: "host", value: source.host),

@@ -1,0 +1,321 @@
+{
+  "effective": {
+    "retention": {
+      "keepLatest": 10,
+      "keepHourly": 48,
+      "keepDaily": 7,
+      "keepWeekly": 4,
+      "keepMonthly": 24,
+      "keepAnnual": 0,
+      "ignoreIdenticalSnapshots": false
+    },
+    "files": {
+      "ignore": [
+        "*.tmp"
+      ],
+      "ignoreDotFiles": [
+        ".kopiaignore"
+      ]
+    },
+    "errorHandling": {
+      "ignoreFileErrors": false,
+      "ignoreDirectoryErrors": false,
+      "ignoreUnknownTypes": true
+    },
+    "scheduling": {
+      "runMissed": true
+    },
+    "compression": {
+      "compressorName": "zstd"
+    },
+    "metadataCompression": {
+      "compressorName": "zstd-fastest"
+    },
+    "splitter": {},
+    "actions": {},
+    "osSnapshots": {
+      "volumeShadowCopy": {
+        "enable": 0
+      }
+    },
+    "logging": {
+      "directories": {
+        "snapshotted": 5,
+        "ignored": 5
+      },
+      "entries": {
+        "snapshotted": 0,
+        "ignored": 5,
+        "cacheHit": 0,
+        "cacheMiss": 0
+      }
+    },
+    "upload": {
+      "maxParallelSnapshots": 1,
+      "parallelUploadAboveSize": 2147483648
+    }
+  },
+  "definition": {
+    "retention": {
+      "keepLatest": {
+        "host": "test-host",
+        "userName": "test-user",
+        "path": "/fixture/source"
+      },
+      "keepHourly": {
+        "host": "",
+        "userName": "",
+        "path": ""
+      },
+      "keepDaily": {
+        "host": "",
+        "userName": "",
+        "path": ""
+      },
+      "keepWeekly": {
+        "host": "",
+        "userName": "",
+        "path": ""
+      },
+      "keepMonthly": {
+        "host": "",
+        "userName": "",
+        "path": ""
+      },
+      "keepAnnual": {
+        "host": "test-host",
+        "userName": "test-user",
+        "path": "/fixture/source"
+      },
+      "ignoreIdenticalSnapshots": {
+        "host": "",
+        "userName": "",
+        "path": ""
+      }
+    },
+    "files": {
+      "ignore": {
+        "host": "test-host",
+        "userName": "test-user",
+        "path": "/fixture/source"
+      },
+      "noParentIgnore": {
+        "host": "",
+        "userName": "",
+        "path": ""
+      },
+      "ignoreDotFiles": {
+        "host": "",
+        "userName": "",
+        "path": ""
+      },
+      "noParentDotFiles": {
+        "host": "",
+        "userName": "",
+        "path": ""
+      },
+      "ignoreCacheDirs": {
+        "host": "",
+        "userName": "",
+        "path": ""
+      },
+      "maxFileSize": {
+        "host": "",
+        "userName": "",
+        "path": ""
+      },
+      "oneFileSystem": {
+        "host": "",
+        "userName": "",
+        "path": ""
+      }
+    },
+    "errorHandling": {
+      "ignoreFileErrors": {
+        "host": "",
+        "userName": "",
+        "path": ""
+      },
+      "ignoreDirectoryErrors": {
+        "host": "",
+        "userName": "",
+        "path": ""
+      },
+      "ignoreUnknownTypes": {
+        "host": "",
+        "userName": "",
+        "path": ""
+      }
+    },
+    "scheduling": {
+      "intervalSeconds": {
+        "host": "",
+        "userName": "",
+        "path": ""
+      },
+      "timeOfDay": {
+        "host": "",
+        "userName": "",
+        "path": ""
+      },
+      "cron": {
+        "host": "",
+        "userName": "",
+        "path": ""
+      },
+      "manual": {
+        "host": "",
+        "userName": "",
+        "path": ""
+      },
+      "runMissed": {
+        "host": "",
+        "userName": "",
+        "path": ""
+      }
+    },
+    "compression": {
+      "compressorName": {
+        "host": "test-host",
+        "userName": "test-user",
+        "path": "/fixture/source"
+      },
+      "onlyCompress": {
+        "host": "",
+        "userName": "",
+        "path": ""
+      },
+      "neverCompress": {
+        "host": "",
+        "userName": "",
+        "path": ""
+      },
+      "minSize": {
+        "host": "",
+        "userName": "",
+        "path": ""
+      },
+      "maxSize": {
+        "host": "",
+        "userName": "",
+        "path": ""
+      }
+    },
+    "metadataCompression": {
+      "compressorName": {
+        "host": "",
+        "userName": "",
+        "path": ""
+      }
+    },
+    "splitter": {
+      "algorithm": {
+        "host": "",
+        "userName": "",
+        "path": ""
+      }
+    },
+    "actions": {
+      "beforeSnapshotRoot": {
+        "host": "",
+        "userName": "",
+        "path": ""
+      },
+      "afterSnapshotRoot": {
+        "host": "",
+        "userName": "",
+        "path": ""
+      }
+    },
+    "osSnapshots": {
+      "volumeShadowCopy": {
+        "enable": {
+          "host": "",
+          "userName": "",
+          "path": ""
+        }
+      }
+    },
+    "logging": {
+      "directories": {
+        "snapshotted": {
+          "host": "",
+          "userName": "",
+          "path": ""
+        },
+        "ignored": {
+          "host": "",
+          "userName": "",
+          "path": ""
+        }
+      },
+      "entries": {
+        "snapshotted": {
+          "host": "",
+          "userName": "",
+          "path": ""
+        },
+        "ignored": {
+          "host": "",
+          "userName": "",
+          "path": ""
+        },
+        "cacheHit": {
+          "host": "",
+          "userName": "",
+          "path": ""
+        },
+        "cacheMiss": {
+          "host": "",
+          "userName": "",
+          "path": ""
+        }
+      }
+    },
+    "upload": {
+      "maxParallelSnapshots": {
+        "host": "",
+        "userName": "",
+        "path": ""
+      },
+      "maxParallelFileReads": {
+        "host": "",
+        "userName": "",
+        "path": ""
+      },
+      "parallelUploadAboveSize": {
+        "host": "",
+        "userName": "",
+        "path": ""
+      }
+    }
+  },
+  "defined": {
+    "retention": {
+      "keepLatest": 10,
+      "keepAnnual": 0
+    },
+    "files": {
+      "ignore": [
+        "*.tmp"
+      ]
+    },
+    "errorHandling": {},
+    "scheduling": {},
+    "compression": {
+      "compressorName": "zstd"
+    },
+    "metadataCompression": {},
+    "splitter": {},
+    "actions": {},
+    "osSnapshots": {
+      "volumeShadowCopy": {}
+    },
+    "logging": {
+      "directories": {},
+      "entries": {}
+    },
+    "upload": {}
+  },
+  "upcomingSnapshotTimes": []
+}

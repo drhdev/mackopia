@@ -8,6 +8,7 @@ enum KopiaServerClientError: Error, Equatable, LocalizedError, CustomDebugString
     case authentication
     case csrf
     case closed
+    case policyNotFound
 
     var errorDescription: String? { String(localized: "Die Sicherungsfunktion konnte nicht ausgeführt werden.") }
     var debugDescription: String {
@@ -19,6 +20,7 @@ enum KopiaServerClientError: Error, Equatable, LocalizedError, CustomDebugString
         case .authentication: "Server authentication failed"
         case .csrf: "Invalid ephemeral server session"
         case .closed: "Server client is closed"
+        case .policyNotFound: "No policy is defined for this source"
         }
     }
 }

@@ -48,6 +48,7 @@ def execute(spike):
     source.mkdir()
     (source / "hello.txt").write_bytes(b"MacKopia server probe\n")
     (source / "empty").touch()
+    spike.run("policy", "set", str(source), "--keep-latest=10", "--keep-annual=0", "--add-ignore=*.tmp", "--compression=zstd")
     spike.run("snapshot", "create", str(source), "--json")
     with Server(spike, ui=False) as disabled:
         disabled.client.json("/api/v1/control/status", control=True)
@@ -75,6 +76,13 @@ def execute(spike):
         client.json("/api/v1/control/status", control=True)
         fixtures["rest-sources.json"] = client.json("/api/v1/sources")
         query = urlencode({"userName": "test-user", "host": "test-host", "path": str(source)})
+        fixtures["rest-policy.json"] = client.json("/api/v1/policy?" + query)
+        fixtures["rest-policy-resolved.json"] = client.json(
+            "/api/v1/policy/resolve?" + query, method="POST", body={"numUpcomingSnapshotTimes": 0})
+        child_query = urlencode({"userName": "test-user", "host": "test-host", "path": str(source / "child")})
+        fixtures["rest-policy-missing.json"] = client.json("/api/v1/policy?" + child_query, expected=400)
+        if fixtures["rest-policy-missing.json"].get("code") != "NOT_FOUND":
+            raise ProbeError("Missing source policy did not return NOT_FOUND")
         snapshot_path = "/api/v1/snapshots?" + query
         before = client.json(snapshot_path)
         (source / "hello.txt").write_bytes(b"MacKopia server probe updated\n")
@@ -130,6 +138,7 @@ def execute(spike):
         "missingCSRFRejected": True, "ephemeralCSRFSession": True, "noUIDisablesUIAPI": True,
         "serverSnapshot": True, "estimateTask": True, "restoreBytesMatch": True,
         "stdinEOFShutdown": True, "credentialsNotPersisted": True,
+        "sourcePolicyRead": True, "effectivePolicyReadOnlyResolve": True, "missingPolicyIs400NotFound": True,
     }}
     return fixtures
 

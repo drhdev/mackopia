@@ -70,6 +70,18 @@ actor KopiaServerClient {
         try await get(.snapshots(source))
     }
 
+    func policy(source: KopiaSnapshotSource) async throws -> KopiaPolicy? {
+        do { return try await get(.policy(source)) } catch KopiaServerClientError.policyNotFound {
+            try Task.checkCancellation()
+            guard !closed else { throw KopiaServerClientError.closed }
+            return nil
+        }
+    }
+
+    func resolvePolicy(source: KopiaSnapshotSource) async throws -> KopiaResolvedPolicy {
+        try await get(.resolvePolicy(source))
+    }
+
     func directory(id: String) async throws -> KopiaDirectory {
         let directory: KopiaDirectory = try await get(.directory(id))
         guard directory.stream == "kopia:directory" else { throw KopiaServerClientError.response }
@@ -82,7 +94,10 @@ actor KopiaServerClient {
         guard !closed else { throw KopiaServerClientError.closed }
         request.setValue("Kopia-Session-Cookie=" + csrf.cookie, forHTTPHeaderField: "Cookie")
         request.setValue(csrf.token, forHTTPHeaderField: "X-Kopia-CSRF-Token")
-        let (_, data) = try await Self.read(session: session, request: request)
+        let allowsMissingPolicy: Bool
+        if case .policy = route { allowsMissingPolicy = true } else { allowsMissingPolicy = false }
+        let (_, data) = try await Self.read(
+            session: session, request: request, allowsMissingPolicy: allowsMissingPolicy)
         try Task.checkCancellation()
         guard !closed else { throw KopiaServerClientError.closed }
         do { return try JSONDecoder().decode(Response.self, from: data) } catch {
@@ -138,10 +153,18 @@ actor KopiaServerClient {
         let credentials = Data(("mackopia:" + handshake.password).utf8).base64EncodedString()
         request.setValue("Basic " + credentials, forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        if case .resolvePolicy = route {
+            // Kopia 0.23.1: resolve is a read-only POST. No updates or Kopia scheduling requests.
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = Data(#"{"numUpcomingSnapshotTimes":0}"#.utf8)
+        }
         return request
     }
 
-    private static func read(session: URLSession, request: URLRequest) async throws -> (HTTPURLResponse, Data) {
+    private static func read(
+        session: URLSession, request: URLRequest, allowsMissingPolicy: Bool = false
+    ) async throws -> (HTTPURLResponse, Data) {
         do {
             guard let delegate = session.delegate as? KopiaServerTrustDelegate else {
                 throw KopiaServerClientError.transport
@@ -152,7 +175,9 @@ actor KopiaServerClient {
                 throw KopiaServerClientError.response
             }
             if response.statusCode == 401 { throw KopiaServerClientError.authentication }
-            guard response.statusCode == 200 else { throw KopiaServerClientError.response }
+            // Kopia 0.23.1: GET /policy returns HTTP 400 + NOT_FOUND for an undefined policy.
+            let missingPolicy = allowsMissingPolicy && response.statusCode == 400
+            guard response.statusCode == 200 || missingPolicy else { throw KopiaServerClientError.response }
             let limit = 4 * 1024 * 1024
             guard response.expectedContentLength <= limit else { throw KopiaServerClientError.responseTooLarge }
             var body = Data()
@@ -160,6 +185,13 @@ actor KopiaServerClient {
                 try Task.checkCancellation()
                 guard body.count < limit else { throw KopiaServerClientError.responseTooLarge }
                 body.append(byte)
+            }
+            if missingPolicy {
+                struct ErrorCode: Decodable { let code: String }
+                guard let code = try? JSONDecoder().decode(ErrorCode.self, from: body), code.code == "NOT_FOUND" else {
+                    throw KopiaServerClientError.response
+                }
+                throw KopiaServerClientError.policyNotFound
             }
             return (response, body)
         } catch let error as KopiaServerClientError { throw error } catch is CancellationError {
