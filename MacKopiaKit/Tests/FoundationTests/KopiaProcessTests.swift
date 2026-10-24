@@ -4,7 +4,7 @@ import Testing
 
 @testable import KopiaCLI
 
-@Suite("Finite child process lifecycle")
+@Suite("Finite child process lifecycle", .serialized)
 struct KopiaProcessTests {
     func temporaryRoot() throws -> URL {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("mackopia-runner-\(UUID())")

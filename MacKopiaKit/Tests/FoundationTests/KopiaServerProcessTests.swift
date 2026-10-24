@@ -5,6 +5,8 @@ import Testing
 @testable import KopiaCLI
 @testable import KopiaServer
 
+// Each case owns real child processes; bound concurrent fixture pressure on hosted runners.
+@Suite(.serialized)
 struct KopiaServerProcessTests {
     private let identify = """
         import os,pathlib,signal,sys,time

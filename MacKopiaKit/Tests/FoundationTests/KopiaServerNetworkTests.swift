@@ -3,6 +3,8 @@ import Testing
 
 @testable import KopiaServer
 
+// Each case owns real child processes; bound concurrent fixture pressure on hosted runners.
+@Suite(.serialized)
 struct KopiaServerNetworkTests {
     @Test func controlRejectsAuthenticationFailureAndRedirect() async throws {
         for mode in ["control-denied", "control-redirect"] {

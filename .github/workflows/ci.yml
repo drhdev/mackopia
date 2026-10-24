@@ -40,9 +40,7 @@ jobs:
       - name: Package tests
         env:
           MACKOPIA_REQUIRE_KOPIA_INTEGRATION: "1"
-        # Each adversarial network case launches TLS servers and generates a fresh RSA key.
-        # Bound process pressure on hosted runners while retaining concurrency within each test.
-        run: swift test --package-path MacKopiaKit --no-parallel
+        run: swift test --package-path MacKopiaKit
       - name: App and embedded service build
         run: xcodebuild -scheme MacKopia -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO build
       - name: Bundle layout tests

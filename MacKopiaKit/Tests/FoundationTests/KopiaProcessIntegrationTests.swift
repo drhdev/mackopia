@@ -19,7 +19,7 @@ enum NativeKopiaFixture {
 }
 
 @Suite(
-    "Real pinned Kopia command execution", .tags(.integration),
+    "Real pinned Kopia command execution", .serialized, .tags(.integration),
     .enabled(
         if: FileManager.default.isExecutableFile(atPath: NativeKopiaFixture.binary.path)
             || ProcessInfo.processInfo.environment["MACKOPIA_REQUIRE_KOPIA_INTEGRATION"] == "1"))

@@ -4,7 +4,8 @@ import Testing
 
 @testable import KopiaCLI
 
-@Suite("Memory-only Kopia configuration transport")
+// Each case owns real child processes; bound concurrent fixture pressure on hosted runners.
+@Suite("Memory-only Kopia configuration transport", .serialized)
 struct KopiaConfigurationPipeTests {
     private func repositoryDirectory() throws -> URL {
         let directory = FileManager.default.temporaryDirectory

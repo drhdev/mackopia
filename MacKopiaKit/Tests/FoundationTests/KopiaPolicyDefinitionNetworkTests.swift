@@ -5,6 +5,8 @@ import Testing
 @testable import BackupEngine
 @testable import KopiaServer
 
+// Each case owns real child processes; bound concurrent fixture pressure on hosted runners.
+@Suite(.serialized)
 struct KopiaPolicyDefinitionNetworkTests {
     private func source() throws -> KopiaSnapshotSource {
         try KopiaSnapshotSource(userName: "user+tag", host: "host+tag", path: "/Source ü + & ? # %2F")
