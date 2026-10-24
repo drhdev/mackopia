@@ -363,6 +363,11 @@ Timeout für den Handshake: 30 s, danach Prozess beenden → `KopiaError.serverS
 | `PUT /api/v1/repo/throttle` | Bandbreitenlimit zur Laufzeit (Option „Netzwerk schonen“) |
 | `POST /api/v1/control/shutdown` | Server sauber beenden (zusätzlich zu stdin-Schließen) |
 
+Kopia 0.23.1 kann beim Control-Shutdown den Prozess beenden, bevor die HTTP-Antwort vollständig gesendet ist.
+Ein Transportfehler bleibt im Client ein Fehler; er ist allein kein Erfolgsnachweis. Der echte Integrationstest verlangt
+deshalb zusätzlich das beobachtete Ende des eigenen Kindprozesses mit Exit 0, ohne dafür stdin zu schließen oder Signale
+zu senden. Der primäre produktive Shutdown-Pfad bleibt stdin-EOF mit anschließendem Reaping.
+
 **Scheduling in Kopia deaktivieren**: MacKopia ist die einzige Instanz, die Zeitpläne steuert. Kopia-Policies bekommen
 **keine** `scheduling`-Einstellungen, damit nichts doppelt läuft. Wartung führt der Server automatisch aus, solange er läuft und
 der Rechner Owner ist. Zusätzlich stößt der `MaintenanceCoordinator` sie gezielt an (siehe 7.6), weil Server bei
@@ -1239,6 +1244,7 @@ Fehler-Mapping gehört in **eine** Datei mit Tests pro Zeile.
 
 | Datum | Entscheidung | Grund |
 |---|---|---|
+| 2026-10-24 | Control-Shutdown über den eigenen Prozessabschluss nachweisen; Transportfehler nie pauschal als Erfolg behandeln | CI reproduziert Antwortverlust trotz Shutdown. Kopia 0.23.1 startet [OnShutdown asynchron](https://github.com/kopia/kopia/blob/v0.23.1/internal/server/server.go); [Serve und Prozessende](https://github.com/kopia/kopia/blob/v0.23.1/cli/command_server_start.go) können der Antwort zuvorkommen. Client bleibt unverändert fehlschließend; Integration verlangt Ende vor Cleanup und Exit 0. |
 | 2026-10-24 | Manueller Dateisystem-Engine-Durchstich und GRDB 7.11.1 für dauerhafte Laufhistorie | Nutzer hat die GRDB-Abhängigkeit ausdrücklich freigegeben. §7.5 verbindet Queue/Config/Schutz, Policy-Abgleich, Server, Quellen und Historie; keine Agent-/TCC-Ausnahme. [Kopia 0.23.1](https://github.com/kopia/kopia/blob/v0.23.1/internal/server/api_snapshots.go) liefert ohne `all=true` nur nach Wurzel zusammengefasste Snapshots; vollständige Manifestliste verhindert falsche Fehlbewertung identischer Folgeläufe. Offene erweiterte Laufoptionen blockieren ausdrücklich. |
 | 2026-10-24 | Agent-Aufträge als vollständige Ausführungsbatches gemäß §14; Phasen bleiben Abnahmegates | Nutzer hat den Vorschlag größerer zusammenhängender Läufe zur Umsetzung freigegeben; weniger wiederholte Kontext-/Prüf-/Hand-off-Schritte, vollständige Verdrahtung pro Batch |
 | 2026-10-24 | Policy-Abgleich mit nichtpersistierender Vorschau, erneuten Leseprüfungen und Nachprüfung; kein Plan-Hash-Cache und keine automatische Rückschreibung | Kopia 0.23.1 unterstützt `resolve.updates`, aber keinen bedingten PUT. Vererbung/Ausschlüsse können unabhängig vom Plan wechseln; externe Schreibrennen bleiben ausdrücklich möglich. Scheduling bleibt unverändert; unwirksame Sollwerte blockieren |

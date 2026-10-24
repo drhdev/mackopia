@@ -34,12 +34,18 @@ struct KopiaProcessIntegrationTests {
         let handshake = try await server.start(configuration: configuration)
         let client = KopiaServerClient(handshake: handshake)
         do {
-            try await client.shutdownServer()
+            do {
+                try await client.shutdownServer()
+            } catch KopiaServerClientError.transport {
+                // Kopia 0.23.1: control shutdown runs on a goroutine; Serve can return and the
+                // process exit before the HTTP response flushes. Require the owned child's clean
+                // exit below, without closing stdin or sending signals to make the test pass.
+            }
             let deadline = ContinuousClock.now.advanced(by: .seconds(5))
             while await server.isRunning, ContinuousClock.now < deadline {
                 try await Task.sleep(for: .milliseconds(10))
             }
-            #expect(await server.isRunning == false)
+            try #require(await server.isRunning == false)
         } catch {
             await client.close()
             try? await server.stop()
