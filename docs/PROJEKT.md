@@ -475,8 +475,18 @@ beim Definitionsabruf ergibt `nil`. Andere Fehler und übergroße Antworten blei
 decodierbare Projektionen lesen Aufbewahrung, Dateiregeln, Kompression sowie deren Vererbungsursprünge;
 fehlend, null, 0 und false werden nicht durch vermeintliche Standardwerte ersetzt. Globale Ursprünge dürfen
 leere Identitätskomponenten enthalten. Unbekannte Felder werden ignoriert; diese unvollständigen Projektionen
-dürfen niemals zum Zurückschreiben einer Policy verwendet werden. Übersetzung/Schreibabgleich und Agent-
-Anbindung bleiben separat offen; kein automatisches Anwenden oder Löschen von Backups in diesem Lesepfad.
+dürfen niemals zum Zurückschreiben einer Policy verwendet werden. Schreibabgleich und Agent-Anbindung bleiben
+separat offen; kein automatisches Anwenden oder Löschen von Backups in diesem Lesepfad.
+
+`PolicyTranslator` übersetzt rein und deterministisch die planverwalteten Werte für eine vollständig im Plan
+enthaltene Quelle: Aufbewahrung einschließlich nil/0, Kompression, Ausschlussmuster, Cache-Verzeichnisse,
+Dateigrößenlimit (dezimal MB → Int64-Bytes, überlaufgeprüft) und Dateisystemgrenze. Das Ergebnis ist bewusst
+kein serialisierbarer Kopia-Schreibbody. Vererbungssteuerung und Erhalt fremder Policy-Felder gehören zum
+späteren Schreibabgleich. Aktivierte macOS-/Time-Machine-Ausschlussquellen verlangen explizit für diese Quelle
+aufgelöste Musterlisten; nil ist unaufgelöst und blockiert, eine leere Liste ist ein gültiges Ergebnis ohne Treffer.
+Die Resolver selbst bleiben offen. Reihenfolge: macOS, Time Machine, benutzerdefinierte Muster; keine Sortierung
+oder Deduplizierung, damit Negationen und wiederholte Regeln erhalten bleiben. Für die kombinierte Liste gelten
+dieselben Größen-/Textgrenzen wie für gespeicherte Muster. Keine I/O-, Scheduling- oder Löschaktion.
 
 Plan-Metadaten werden auch beim Decoding validiert: nichtleere Quellen-/Triggerlisten, eindeutige Quell-IDs
 und wörtliche Quellpfade pro Plan, gültige Uhrzeiten/Wochentage, positive Intervalle und geordnete positive
@@ -1081,6 +1091,7 @@ Fehler-Mapping gehört in **eine** Datei mit Tests pro Zeile.
 
 | Datum | Entscheidung | Grund |
 |---|---|---|
+| 2026-10-24 | Reine Policy-Übersetzung liefert nur planverwaltete Sollwerte; aktivierte Ausschlussresolver müssen explizite Ergebnisse liefern | Kein unvollständiger PUT-Body und kein stiller Wegfall aktivierter macOS-/Time-Machine-Regeln. Reihenfolge und Negationen bleiben erhalten; Resolver, Vererbungssteuerung und Schreibabgleich folgen separat. |
 | 2026-10-23 | Hybrid-Integration: `kopia server` (lokal, TLS-Pinning) + CLI `--json` | Strukturierter Fortschritt, Abbruch, Browsing |
 | 2026-10-23 | Engine-Vorabprüfung trennt blockierende Zielprobleme von übersprungenen Quellen; fehlende Beobachtung erfüllt keine Bedingung | §9 präzisiert Pfad-/Volume-Teilprüfung, Überschneidungen, Fallunterscheidung und temporär nicht auswertbare WLAN-Bedingung; keine Job-Startfreigabe oder neue Systemrechte. |
 | 2026-10-23 | ConfigStore verwendet schema-1-Hülle, begrenzte Dokumente und POSIX-atomaren Austausch statt Data.write(.atomic) | 0600 bereits vor dem ersten Byte, verzeichnisgebundener Austausch, Schreibsperre und validierte explizite Recovery; §7.2 präzisiert. Keine Kopia- oder Secret-Dateien. |
