@@ -475,8 +475,8 @@ beim Definitionsabruf ergibt `nil`. Andere Fehler und übergroße Antworten blei
 decodierbare Projektionen lesen Aufbewahrung, Dateiregeln, Kompression sowie deren Vererbungsursprünge;
 fehlend, null, 0 und false werden nicht durch vermeintliche Standardwerte ersetzt. Globale Ursprünge dürfen
 leere Identitätskomponenten enthalten. Unbekannte Felder werden ignoriert; diese unvollständigen Projektionen
-dürfen niemals zum Zurückschreiben einer Policy verwendet werden. Schreibabgleich und Agent-Anbindung bleiben
-separat offen; kein automatisches Anwenden oder Löschen von Backups in diesem Lesepfad.
+dürfen niemals zum Zurückschreiben einer Policy verwendet werden. Ein vollständiger lokaler Policy-Merge-Baustein
+ist separat verfügbar; HTTP-Schreibabgleich und Agent-Anbindung bleiben weiterhin offen; kein automatisches Anwenden oder Löschen von Backups in diesem Lesepfad.
 
 `PolicyTranslator` übersetzt rein und deterministisch die planverwalteten Werte für eine vollständig im Plan
 enthaltene Quelle: Aufbewahrung einschließlich nil/0, Kompression, Ausschlussmuster, Cache-Verzeichnisse,
@@ -484,10 +484,20 @@ Dateigrößenlimit (dezimal MB → Int64-Bytes, überlaufgeprüft) und Dateisyst
 kein serialisierbarer Kopia-Schreibbody. Vererbungssteuerung und Erhalt fremder Policy-Felder gehören zum
 späteren Schreibabgleich. Aktivierte macOS-/Time-Machine-Ausschlussquellen verlangen explizit für diese Quelle
 aufgelöste Musterlisten; nil ist unaufgelöst und blockiert, eine leere Liste ist ein gültiges Ergebnis ohne Treffer.
-Die macOS-Standardliste ist als rein lexikalischer Baustein verfügbar; Dateisystem-/Time-Machine-Resolver
-und deren Anbindung bleiben offen. Reihenfolge: macOS, Time Machine, benutzerdefinierte Muster; keine Sortierung
+Die macOS-Standardliste ist als rein lexikalischer Baustein und der Time-Machine-Resolver als expliziter
+Dateisystemadapter verfügbar; deren produktive Anbindung bleibt offen. Reihenfolge: macOS, Time Machine,
+benutzerdefinierte Muster; keine Sortierung
 oder Deduplizierung, damit Negationen und wiederholte Regeln erhalten bleiben. Für die kombinierte Liste gelten
 dieselben Größen-/Textgrenzen wie für gespeicherte Muster. Keine I/O-, Scheduling- oder Löschaktion.
+
+`KopiaPolicyDocument` hält die vollständige lokale JSON-Definition (maximal 1 MiB, Tiefe 64),
+einschließlich unbekannter Werte und ursprünglicher Zahlentokens. `SourcePolicyMerger` ersetzt ausschließlich
+planverwaltete Felder und erhält übrige Felder sowie bestehende Scheduling-Werte unverändert. Retention-nil
+entfernt den lokalen Override, 0 bleibt explizit. Der Baustein führt keine HTTP-Schreibzugriffe aus und bestätigt
+keine effektive Policy: Kopia 0.23.1 erbt leere Ignore-Listen und maxFileSize 0 weiterhin, unabhängig von
+`noParentIgnore`; dieses Flag beeinflusst die Verzeichnistraversierung. Root-`noParent` bleibt unverändert,
+damit fremde Vererbung erhalten bleibt. Vor einem späteren Writer sind effektive Regeln und deaktiviertes
+Kopia-Scheduling zusätzlich zu prüfen. Reine lokale Idempotenz ersetzt diesen Nachweis nicht.
 
 Plan-Metadaten werden auch beim Decoding validiert: nichtleere Quellen-/Triggerlisten, eindeutige Quell-IDs
 und wörtliche Quellpfade pro Plan, gültige Uhrzeiten/Wochentage, positive Intervalle und geordnete positive
@@ -536,7 +546,9 @@ vollständige Modellvalidierung. Laden migriert nur im Speicher, der nächste Sa
 Aktuell existiert nur Schema 1, keine erfundene Vorgängermigration. Wiederherstellung ist ein separater,
 explizit durch die Benutzeraktion aufzurufender Vorgang: Backup erst validieren, Primärdatei atomar ersetzen,
 Backup unverändert behalten. Keine automatische Reparatur und keine automatische Freigabe von Jobs.
-Export/Import sowie UI-/Agent-Anbindung folgen separat.
+`currentConfiguration()` liefert ausschließlich den letzten erfolgreich geladenen/gespeicherten Actor-Stand;
+vor dem Laden und im Sicherheitsmodus ist Lesen gesperrt. Externe Dateiveränderungen werden weiterhin
+beim Laden/Speichern erkannt, nicht durch jeden In-Memory-Lesezugriff. Export/Import sowie UI-/Agent-Anbindung folgen separat.
 
 ### 7.3 Scheduler
 
@@ -592,6 +604,15 @@ konkrete Laufkennung, damit verspätete Rückmeldungen keinen neueren Lauf freig
 Abschluss erst nach vollständigem Operations-Cleanup melden und Planfreigabe, aktuellen ConfigStore-Stand
 sowie Repository-Sperre beim Start erneut prüfen. Die Queue startet selbst keine Prozesse; Scheduler,
 Retry, Historie, persistente Wiederaufnahme und Agent-Anbindung bleiben separat offen.
+
+`ConfiguredJobRunner` verbindet diese Queue explizit mit dem ConfigStore und der bestehenden geschützten
+Operationsgrenze. Einlieferung und Entnahme lösen Plan/Speicherziel erneut aus der Konfiguration auf:
+entfernte oder deaktivierte Pläne blockieren, automatische Trigger müssen weiterhin exakt eingerichtet sein;
+manuelle Anfragen sind für jeden aktivierten Plan erlaubt. Beim Start ersetzt der aktuelle Plan den wartenden
+Planstand. Direkt vor dem Operations-Callback wird nach allen suspendierenden Vorabprüfungen nochmals
+Plan-/Speicherzielgleichheit geprüft. Die Laufkennung wird auf jedem Ausgang erst nach abgeschlossener
+Operations-/Schutzbereinigung freigegeben. Dies ist keine Sperre gegen Konfigurationsänderungen während
+einer bereits gestarteten Operation; kein Scheduler, keine Agent-Verdrahtung und keine produktive Kopia-Aktion.
 
 - **Retry-Strategie** bei transienten Fehlern (Netzwerk, Timeout, Ziel kurz weg): exponentiell 1 → 5 → 15 Min.,
   max. 3 Versuche, danach `failed` + Mitteilung. Nicht-transiente Fehler (falsches Passwort, Repo nicht gefunden,
@@ -889,7 +910,15 @@ Policy-Übertragung; der Aufrufer muss Quellidentität und Aktualität weiterhin
 
 - `honorTimeMachineExclusions` → beim Policy-Abgleich die Quelle flach bis Tiefe 3 nach `URLResourceKey.isExcludedFromBackupKey`
   scannen (plus `tmutil`-Sticky-Exclusions via `com_apple_backup_excludeItem`-xattr) und als Ignore-Regeln übernehmen.
-  Scan im Hintergrund mit Limit (max. 10 s), Ergebnis cachen.
+  Expliziter Resolver scannt Wurzel und drei Nachkommenebenen mit maximal 10.000 Einträgen auf einem separaten
+  Dateisystem-Actor; keine Symlink-Traversierung oder fremden Volumes. Fehlende Metadaten, Lesefehler und
+  Budgetüberschreitung verwerfen das gesamte Ergebnis. Quellrelative Literalmuster sind maskiert und verankert,
+  ausgeschlossene Wurzel liefert `**`. Ergebnis ist an die vollständige Quelle und einen monotonen Zeitpunkt
+  gebunden (höchstens 60 s wiederverwendbar); ein interner Cache und produktive Policy-Anbindung fehlen noch.
+  Das 10-s-Limit gilt kooperativ vor/nach I/O; blockierende Kernel-Dateisystemaufrufe sind nicht hart unterbrechbar.
+  Pfadprüfungen sind Beobachtungen, keine rennfreie Dateideskriptor-Traversierung. Die Auflösung erfasst nur
+  dasselbe Volume und verweigert `oneFileSystem=false`; bei späterer volumeübergreifender Sicherung ist
+  zusätzliche Ausschlussauflösung nötig. Sticky-xattr: `com.apple.metadata:com_apple_backup_excludeItem`.
 - `oneFileSystem` (Standard an) → keine anderen Volumes unter der Quelle mitsichern.
 - Der Editor zeigt die **effektiven** Regeln (`policy/resolve`) und eine Vorschau „X Dateien / Y GB werden gesichert“ (`/api/v1/estimate`).
 
@@ -1161,6 +1190,9 @@ Fehler-Mapping gehört in **eine** Datei mit Tests pro Zeile.
 | 2026-10-24 | Nativen lokalen Volume-Schutz über DiskArbitration als expliziten Adapter ergänzt; APFS-Gerät per statfs auflösen | §9: lokale UUID-/Mountbestätigung, Unmount-Veto, terminale Verlustereignisse und Cleanup unter bestehender Reservierung; schwache Callback-Kennungen verhindern späte Zeigerzugriffe. Neu verfügbare ungeschützte Quellen/Netzwerk-Volumes blockieren; Agent-/Benachrichtigungs-UX und echte Eject-Abnahme offen. |
 | 2026-10-24 | Expliziten Quellzugriffsadapter mit echten begrenzten Leseversuchen und separater geschützter Datenprobe ergänzt | §9: fehlende/unklare Probe blockiert, keine Inhaltsausgabe oder rekursive Lesbarkeitsgarantie. Konservativer experimenteller FDA-Nachweis für alle Quellen; Standard bleibt unbekannt, bis signierte Agent-/Kindprozess-Zuordnung geprüft ist. |
 | 2026-10-24 | Nativen Policy-Lesepfad einschließlich effektiver Auflösung gegen Kopia 0.23.1 geprüft | §7.1: vollständige Quellidentität, lesender POST ohne Updates/Zeitpläne, fehlende Definition nur bei HTTP 400 + NOT_FOUND; getrennte definierte/effektive Werte und Ursprünge. Decodable-Projektionen sind keine Schreibmodelle. |
+| 2026-10-24 | Time-Machine-Ausschlüsse explizit, quellgebunden und begrenzt auflösen; bei Teilfehlern kein Ergebnis | §10: Tiefe 3, 10.000 Einträge, kooperativ 10 s, höchstens 60 s wiederverwendbar; keine automatische Policy-Anwendung und keine harte Unterbrechung blockierender I/O. |
+| 2026-10-24 | Queue über ConfigStore und geschützten Operationskoordinator freigeben | §7.2/§7.5: aktueller Plan bei Entnahme, erneute Gleichheitsprüfung vor Callback und Queue-Abschluss nach Cleanup; keine produktive Agent-Verdrahtung. |
+| 2026-10-24 | Vollständige lokale Policy-Definition verlustfrei für den späteren Schreibabgleich vorbereiten | §7.1: unbekannte Felder/Zahlentokens erhalten, kein HTTP-Writer. Kopia 0.23.1 vererbt leere Ignore-Listen und maxFileSize 0 weiter; effektive Zielwerte müssen separat validiert werden. |
 | … | *(Spike-Ergebnisse aus Phase 0 hier eintragen)* | |
 
 ---

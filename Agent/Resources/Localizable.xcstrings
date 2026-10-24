@@ -280,6 +280,56 @@
           }
         }
       }
+    },
+    "Der Backup-Plan ist nicht mehr verfügbar.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The backup plan is no longer available."
+          }
+        }
+      }
+    },
+    "Der Backup-Plan ist deaktiviert.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The backup plan is disabled."
+          }
+        }
+      }
+    },
+    "Der Auslöser ist nicht mehr eingerichtet.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The trigger is no longer configured."
+          }
+        }
+      }
+    },
+    "Das Speicherziel ist nicht mehr eingerichtet.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The destination is no longer configured."
+          }
+        }
+      }
+    },
+    "Die Backup-Konfiguration hat sich geändert.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The backup configuration has changed."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

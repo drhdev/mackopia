@@ -51,6 +51,7 @@ package struct BackupOperationCoordinator: Sendable {
             if let error = error as? RepositoryOperationError { throw error }
             if let error = error as? BackupPreflightError { throw error }
             if let error = error as? BackupOperationError { throw error }
+            if let error = error as? JobAdmissionError { throw error }
             throw BackupOperationError.operationFailed
         }
     }

@@ -23,6 +23,14 @@ package actor ConfigStore {
         self.codec = codec
     }
 
+    /// Returns the latest state accepted by this store; safe mode never authorizes a job.
+    package func currentConfiguration() throws -> BackupConfiguration {
+        try Task.checkCancellation()
+        guard let state else { throw ConfigStoreError.notLoaded }
+        guard case .loaded(let configuration) = state else { throw ConfigStoreError.safeMode }
+        return configuration
+    }
+
     package func load() throws -> ConfigLoadResult {
         try Task.checkCancellation()
         do {
