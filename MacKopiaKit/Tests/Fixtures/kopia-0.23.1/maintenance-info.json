@@ -1,0 +1,23 @@
+{
+  "owner": "test-user@test-host",
+  "quick": {
+    "enabled": true,
+    "interval": 3600000000000
+  },
+  "full": {
+    "enabled": true,
+    "interval": 86400000000000
+  },
+  "logRetention": {
+    "maxTotalSize": 1073741824,
+    "maxCount": 10000,
+    "maxAge": 2592000000000000
+  },
+  "extendObjectLocks": false,
+  "listParallelism": 0,
+  "schedule": {
+    "nextFullMaintenance": "0001-01-01T00:00:00Z",
+    "nextQuickMaintenance": "0001-01-01T00:00:00Z",
+    "runs": null
+  }
+}

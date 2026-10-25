@@ -12,11 +12,13 @@ package struct VerificationResult: Codable, Sendable, Hashable {
     package let startedAt: Date
     package let endedAt: Date
     package let dueAt: Date
+    /// Nil preserves legacy evidence without claiming a known sampling percentage.
+    package let filesPercent: Int?
     package let outcome: Outcome
 
     package init(
         id: UUID = UUID(), planID: UUID, repositoryID: UUID, kind: Kind,
-        startedAt: Date, endedAt: Date, dueAt: Date, outcome: Outcome
+        startedAt: Date, endedAt: Date, dueAt: Date, outcome: Outcome, filesPercent: Int? = nil
     ) {
         self.id = id
         self.planID = planID
@@ -26,5 +28,6 @@ package struct VerificationResult: Codable, Sendable, Hashable {
         self.endedAt = endedAt
         self.dueAt = dueAt
         self.outcome = outcome
+        self.filesPercent = filesPercent
     }
 }

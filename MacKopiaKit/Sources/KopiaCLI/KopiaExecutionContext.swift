@@ -26,7 +26,7 @@ struct KopiaExecutionContext: Sendable, CustomReflectable {
             arguments.append("--config-file=" + repositoryDirectory.appendingPathComponent("repository.config").path)
         case .webDAV(let data):
             // Kopia 0.23.1: config mutation would reread a consumed pipe and may persist credentials.
-            // Only the read-only command enum above is admitted to this initial API.
+            // Only typed operations without config mutation are admitted to this API.
             payload = data
             runtimeRoot = repositoryDirectory
         }

@@ -131,11 +131,13 @@ struct VerificationEngineFixture {
 
     func remove() { try? FileManager.default.removeItem(at: root) }
 
-    func engine(_ verifier: any SnapshotVerifying) -> SnapshotVerificationEngine {
+    func engine(
+        _ verifier: any SnapshotVerifying, restorer: (any SnapshotTestRestoring)? = nil
+    ) -> SnapshotVerificationEngine {
         SnapshotVerificationEngine(
             store: base.store,
             coordinator: BackupOperationCoordinator(preflight: base.base.preflight, protection: ManualTestProtection()),
-            verifier: verifier, history: history, now: { base.time.date })
+            verifier: verifier, history: history, restorer: restorer, now: { base.time.date })
     }
 
     func latest() async throws -> VerificationResult? {

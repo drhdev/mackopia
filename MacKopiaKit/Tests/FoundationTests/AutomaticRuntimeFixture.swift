@@ -39,20 +39,25 @@ struct AutomaticRuntimeFixture: Sendable {
     func runtime(
         historyOverride: (any JobHistoryRecording)? = nil,
         monitorOverride: (any SystemEventMonitoring)? = nil,
+        verification: AutomaticSnapshotVerification? = nil,
+        testRestore: AutomaticTestRestore? = nil,
+        coordinator: BackupOperationCoordinator? = nil,
         issue: (@Sendable (AutomaticBackupIssue) async -> Void)? = nil
     ) throws -> AutomaticBackupRuntime<SchedulerTestClock> {
         AutomaticBackupRuntime(
             store: store,
-            coordinator: BackupOperationCoordinator(preflight: base.preflight, protection: ManualTestProtection()),
+            coordinator: coordinator
+                ?? BackupOperationCoordinator(preflight: base.preflight, protection: ManualTestProtection()),
             sessions: sessions, history: historyOverride ?? history, resolver: try TimeMachineExclusionResolver(),
             homeDirectory: "/Home",
             loginDate: time.date, clock: time, now: { time.date }, monitor: monitorOverride ?? monitor,
-            reachability: RuntimeReachability(), jitter: { 0 }, issue: issue ?? { await issues.record($0) })
+            reachability: RuntimeReachability(), jitter: { 0 }, verification: verification, testRestore: testRestore,
+            issue: issue ?? { await issues.record($0) })
     }
 }
 
 actor RuntimeSessions: BackupSessionOpening {
-    enum Mode: Sendable { case normal, firstWaits, alwaysTransient, permanentFailure }
+    enum Mode: Sendable { case normal, firstWaits, alwaysTransient, permanentFailure, validIdentifiers }
     let mode: Mode
     var services: [ManualBackupService] = []
     var opens = 0
@@ -61,7 +66,9 @@ actor RuntimeSessions: BackupSessionOpening {
         opens += 1
         if mode == .alwaysTransient { throw BackupOperationError.volumeDisappeared }
         if mode == .permanentFailure { throw BackupOperationError.operationFailed }
-        let service = ManualBackupService(mode: mode == .firstWaits && opens == 1 ? .waitForCancellation : .normal)
+        let service = ManualBackupService(
+            mode: mode == .firstWaits && opens == 1 ? .waitForCancellation : .normal,
+            validSnapshotIDs: mode == .validIdentifiers)
         services.append(service)
         await service.markOpened()
         return KopiaBackupSession(service: service) { try await service.close() }
@@ -100,10 +107,10 @@ private struct RuntimeReachability: DestinationReachabilityChecking {
     func canConnect(to target: ReachabilityTarget) async throws -> Bool { false }
 }
 
-func waitForRuntime(timeout: Duration = .seconds(5), _ ready: () async -> Bool) async throws {
+func waitForRuntime(timeout: Duration = .seconds(5), _ ready: () async throws -> Bool) async throws {
     let clock = ContinuousClock()
     let deadline = clock.now + timeout
-    while !(await ready()) {
+    while !(try await ready()) {
         guard clock.now < deadline else { throw RuntimeTestError.timedOut }
         try await clock.sleep(for: .milliseconds(5))
     }

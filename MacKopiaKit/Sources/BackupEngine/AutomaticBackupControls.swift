@@ -42,6 +42,7 @@ extension AutomaticBackupRuntime {
             blockingAll = true
             generation &+= 1
         }
+        await cancelPostBackup(planID: planID)
         await scheduler.stop()
         await suppressEvents(planID: planID)
         await cancelAdmissions(planID: planID)
@@ -101,6 +102,12 @@ extension AutomaticBackupRuntime {
         for (id, worker) in workers where id != AutomaticAdmissionWorker.id { _ = await worker.1.result }
     }
 
+    func cancelPostBackup(planID: UUID? = nil) async {
+        guard let worker = postBackupTask, planID == nil || worker.planID == planID else { return }
+        worker.task.cancel()
+        _ = await worker.task.result
+    }
+
     func controlStateFailed() async {
         guard state == .running else { return }
         await shutdown()
@@ -120,6 +127,7 @@ extension AutomaticBackupRuntime {
     }
 
     func finishShutdown(failed: Bool) async {
+        await cancelPostBackup()
         await scheduler.stop()
         eventConfiguration = nil
         await events.stop()

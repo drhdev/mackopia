@@ -276,6 +276,7 @@ actor ManualBackupService: KopiaBackupServing {
             cancelFailure, duplicateManifest
     }
     let mode: Mode
+    let validSnapshotIDs: Bool
     var documents: [String: KopiaPolicyDocument] = [:]
     var uploaded: [String] = []
     var cancellations = 0
@@ -284,7 +285,10 @@ actor ManualBackupService: KopiaBackupServing {
     private var closingCheck: (@Sendable () -> Void)?
     func setClosingCheck(_ check: @escaping @Sendable () -> Void) { closingCheck = check }
     private var waiting: [CheckedContinuation<Void, Never>] = []
-    init(mode: Mode = .normal) { self.mode = mode }
+    init(mode: Mode = .normal, validSnapshotIDs: Bool = false) {
+        self.mode = mode
+        self.validSnapshotIDs = validSnapshotIDs
+    }
     func markOpened() { opened = true }
     func pinSnapshot(id: String) throws -> KopiaSnapshot { throw BackupOperationError.operationFailed }
     func close() throws {
@@ -307,7 +311,7 @@ actor ManualBackupService: KopiaBackupServing {
                     ? "UPLOADING" : "IDLE",
                 "upload": ["hashedBytes": 2, "cachedBytes": 1, "uploadedBytes": 0, "estimatedBytes": 42],
                 "lastSnapshot": [
-                    "id": "snapshot-" + path, "endTime": "end",
+                    "id": snapshotID(path), "endTime": "end",
                     "stats": [
                         "errorCount": mode == .fileWarnings ? 2 : 0, "ignoredErrorCount": mode == .fileWarnings ? 1 : 0,
                     ],
@@ -327,13 +331,18 @@ actor ManualBackupService: KopiaBackupServing {
             uploaded.contains(source.path)
             ? [
                 [
-                    "id": "snapshot-" + source.path, "rootID": "root",
+                    "id": snapshotID(source.path),
+                    "rootID": validSnapshotIDs ? "k" + String(repeating: "a", count: 32) : "root",
                     "summary": ["size": 42, "files": 3, "numFailed": 0],
                 ]
             ] : []
         if mode == .duplicateManifest { entries += entries }
         return try JSONDecoder().decode(
             KopiaSnapshots.self, from: JSONSerialization.data(withJSONObject: ["snapshots": entries]))
+    }
+    private func snapshotID(_ path: String) -> String {
+        validSnapshotIDs
+            ? String(repeating: String((uploaded.firstIndex(of: path) ?? 0) + 1), count: 32) : "snapshot-" + path
     }
     func startUpload(source: KopiaSnapshotSource) throws {
         uploaded.append(source.path)

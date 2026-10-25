@@ -15,6 +15,9 @@ package actor AutomaticBackupRuntime<C: Clock> where C.Duration == Duration {
     let queue: JobQueue
     let runner: ConfiguredJobRunner
     let engine: ManualBackupEngine
+    let verification: AutomaticSnapshotVerification?
+    let testRestore: AutomaticTestRestore?
+    var postBackupTask: (planID: UUID, task: Task<Void, any Error>)?
     let scheduler: Scheduler
     let clock: C
     let now: @Sendable () -> Date
@@ -74,12 +77,16 @@ package actor AutomaticBackupRuntime<C: Clock> where C.Duration == Duration {
         reachability: any DestinationReachabilityChecking = TCPReachabilityChecker(),
         calendar: @escaping @Sendable () -> Calendar = { .current },
         jitter: @escaping @Sendable () -> Double = { .random(in: -60...60) },
+        verification: AutomaticSnapshotVerification? = nil,
+        testRestore: AutomaticTestRestore? = nil,
         issue: @escaping @Sendable (AutomaticBackupIssue) async -> Void
     ) {
         historySchedule = history as? any JobHistoryScheduleReading
         historyRecovery = history as? any JobHistoryRecovering
         historyHealth = history as? any JobHistoryHealthReading
         self.store = store
+        self.verification = verification
+        self.testRestore = testRestore
         let queue = JobQueue(clock: clock, now: now, pausePersistence: store.pauseStore.makeSession())
         self.queue = queue
         let runner = ConfiguredJobRunner(store: store, queue: queue, coordinator: coordinator)
@@ -238,7 +245,33 @@ package actor AutomaticBackupRuntime<C: Clock> where C.Duration == Duration {
         let version = generation
         let planVersion = planVersions[job.plan.id, default: 0]
         switch result {
-        case .success: await retries.reset(planID: job.plan.id)
+        case .success(let run):
+            await retries.reset(planID: job.plan.id)
+            let paused = await queue.isPaused(job.plan.id)
+            guard current(job.plan.id, generation: version, planVersion: planVersion),
+                !paused, !Task.isCancelled, verification != nil || testRestore != nil
+            else { return }
+            let verification = verification
+            let testRestore = testRestore
+            let issue = issue
+            let task = Task {
+                if let verification {
+                    do { try await verification.afterBackup(run) } catch {
+                        if Task.isCancelled || error is CancellationError { throw CancellationError() }
+                        await issue(.verificationFailed(planID: job.plan.id))
+                    }
+                }
+                try Task.checkCancellation()
+                if let testRestore {
+                    do { try await testRestore.afterBackup(run) } catch {
+                        if Task.isCancelled || error is CancellationError { throw CancellationError() }
+                        await issue(.testRestoreFailed(planID: job.plan.id))
+                    }
+                }
+            }
+            postBackupTask = (job.plan.id, task)
+            _ = await task.result
+            postBackupTask = nil
         case .failure(let error):
             guard !(error is CancellationError), !(await queue.isPaused(job.plan.id)) else {
                 await retries.reset(planID: job.plan.id)

@@ -76,6 +76,8 @@ struct ManualBackupIntegrationTests {
             gate: try RepositoryOperationGate(), sourceAccess: access, environment: access)
         try KopiaFilesystemBinding.validate(repository: repository, homeDirectory: root)
         #expect(try await preflight.evaluate(plan: plan, repository: repository).outcome == .checksPassed)
+        try await maintainFreshIntegrationRepository(
+            plan: plan, repository: repository, store: store, preflight: preflight, root: root, secrets: access)
         let stages = IntegrationStages()
         let engine = ManualBackupEngine(
             runner: ConfiguredJobRunner(

@@ -9,6 +9,7 @@ package actor SnapshotVerificationEngine {
     private let store: ConfigStore
     private let coordinator: BackupOperationCoordinator
     private let verifier: any SnapshotVerifying
+    private let restorer: (any SnapshotTestRestoring)?
     private let history: any JobHistoryHealthReading & VerificationHistoryRecording
     private let sleep: any SleepPreventing
     private let now: @Sendable () -> Date
@@ -17,11 +18,13 @@ package actor SnapshotVerificationEngine {
     package init(
         store: ConfigStore, coordinator: BackupOperationCoordinator, verifier: any SnapshotVerifying,
         history: any JobHistoryHealthReading & VerificationHistoryRecording,
-        sleep: any SleepPreventing = LocalSleepPreventer(), now: @escaping @Sendable () -> Date = { .now }
+        sleep: any SleepPreventing = LocalSleepPreventer(),
+        restorer: (any SnapshotTestRestoring)? = nil, now: @escaping @Sendable () -> Date = { .now }
     ) {
         self.store = store
         self.coordinator = coordinator
         self.verifier = verifier
+        self.restorer = restorer
         self.history = history
         self.sleep = sleep
         self.now = now
@@ -31,6 +34,20 @@ package actor SnapshotVerificationEngine {
     /// A failed command is recorded before its sanitized error is returned; callers must also surface storage errors.
     package func verify(
         planID: UUID, filesPercent: Int = 1, validFor: Duration = .seconds(7 * 24 * 60 * 60)
+    ) async throws -> VerificationResult? {
+        try await execute(planID: planID, filesPercent: filesPercent, validFor: validFor, kind: .snapshotVerify)
+    }
+
+    /// An inconclusive sample leaves existing evidence unchanged. Scheduling is owned by the caller.
+    package func testRestore(
+        planID: UUID, validFor: Duration = .seconds(30 * 24 * 60 * 60)
+    ) async throws -> VerificationResult? {
+        guard restorer != nil else { throw BackupOperationError.operationFailed }
+        return try await execute(planID: planID, filesPercent: 1, validFor: validFor, kind: .testRestore)
+    }
+
+    private func execute(
+        planID: UUID, filesPercent: Int, validFor: Duration, kind: VerificationResult.Kind
     ) async throws -> VerificationResult? {
         guard !active else { throw RepositoryOperationError.repositoryBusy }
         guard (1...100).contains(filesPercent), validFor > .zero, validFor <= .seconds(31 * 24 * 60 * 60) else {
@@ -51,6 +68,7 @@ package actor SnapshotVerificationEngine {
         let attempt = VerificationAttempt()
         let history = history
         let verifier = verifier
+        let restorer = restorer
         let store = store
         let sleep = sleep
         let now = now
@@ -77,17 +95,28 @@ package actor SnapshotVerificationEngine {
                 let assertion = try sleep.acquire()
                 defer { assertion.release() }
                 await attempt.begin(at: date)
-                try await verifier.verify(
-                    repository: repository, snapshotIDs: run.sources.map(\.snapshotID),
-                    filesPercent: filesPercent, lowPriority: plan.options.lowPriority)
+                let conclusive: Bool
+                switch kind {
+                case .snapshotVerify:
+                    try await verifier.verify(
+                        repository: repository, snapshotIDs: run.sources.map(\.snapshotID),
+                        filesPercent: filesPercent, lowPriority: plan.options.lowPriority)
+                    conclusive = true
+                case .testRestore:
+                    guard let restorer else { throw BackupOperationError.operationFailed }
+                    conclusive = try await restorer.testRestore(
+                        repository: repository, sources: sources, run: run, lowPriority: plan.options.lowPriority)
+                }
                 await attempt.finish(at: now())
-                return true
+                return conclusive
             }
-            guard case .completed = execution else { return nil }
+            guard case .completed(let conclusive, _) = execution, conclusive else { return nil }
         } catch {
             if Task.isCancelled || error is CancellationError { throw CancellationError() }
             if let startedAt = await attempt.startedAt {
-                _ = try await record(plan: plan, startedAt: startedAt, validFor: validFor, outcome: .failed)
+                _ = try await record(
+                    plan: plan, startedAt: startedAt, validFor: validFor, kind: kind, filesPercent: filesPercent,
+                    outcome: .failed)
             }
             throw error
         }
@@ -98,12 +127,12 @@ package actor SnapshotVerificationEngine {
         guard let startedAt = await attempt.startedAt else { throw BackupOperationError.operationFailed }
         return try await record(
             plan: plan, startedAt: startedAt, endedAt: await attempt.endedAt,
-            validFor: validFor, outcome: .succeeded)
+            validFor: validFor, kind: kind, filesPercent: filesPercent, outcome: .succeeded)
     }
 
     private func record(
         plan: BackupPlan, startedAt: Date, endedAt: Date? = nil,
-        validFor: Duration, outcome: VerificationResult.Outcome
+        validFor: Duration, kind: VerificationResult.Kind, filesPercent: Int, outcome: VerificationResult.Outcome
     ) async throws -> VerificationResult {
         // Timestamp actual command completion, before the reservation is released. Delayed cleanup
         // or persistence must not make an older success supersede a later failed check.
@@ -113,8 +142,9 @@ package actor SnapshotVerificationEngine {
         let components = validFor.components
         let due = end.addingTimeInterval(Double(components.seconds) + Double(components.attoseconds) / 1e18)
         let result = VerificationResult(
-            planID: plan.id, repositoryID: plan.repositoryID, kind: .snapshotVerify,
-            startedAt: startedAt, endedAt: end, dueAt: due, outcome: outcome)
+            planID: plan.id, repositoryID: plan.repositoryID, kind: kind,
+            startedAt: startedAt, endedAt: end, dueAt: due, outcome: outcome,
+            filesPercent: kind == .snapshotVerify ? filesPercent : nil)
         if outcome == .succeeded { try Task.checkCancellation() }
         let history = history
         // Persistence must finish even if cancellation arrives after command cleanup.
