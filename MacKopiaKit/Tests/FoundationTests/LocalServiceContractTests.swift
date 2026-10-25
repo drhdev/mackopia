@@ -61,6 +61,23 @@ struct LocalServiceContractTests {
         #expect(roundtrip.version == AgentRequest.currentVersion)
         #expect(roundtrip.state?.revision == state.revision)
     }
+    @Test func automationCommandsAreVersionedAndRejectInvalidDates() throws {
+        let id = UUID()
+        for command in [
+            AgentRequest.Command.pause(planID: id, until: .now), .resume(planID: id),
+            .verify(id), .setNotificationsEnabled(true),
+        ] {
+            let request = AgentRequest(command)
+            try AgentWirePacket(request).decode(AgentRequest.self).validate()
+        }
+        #expect(throws: LocalServiceIssue.invalidRequest) {
+            try AgentRequest(.pause(planID: nil, until: Date(timeIntervalSinceReferenceDate: .infinity))).validate()
+        }
+        #expect(throws: AgentServiceError.incompatibleProtocol) {
+            try AgentRequest(.state(after: nil), version: 2).validate()
+        }
+    }
+
     private func selection(_ path: String) throws -> BackupSource {
         try BackupSource(
             path: path,

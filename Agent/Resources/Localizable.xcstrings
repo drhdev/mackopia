@@ -1156,6 +1156,106 @@
           }
         }
       }
+    },
+    "Alle Backups pausiert": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "All backups paused"
+          }
+        }
+      }
+    },
+    "Backups aktuell und geprüft": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Backups up to date and verified"
+          }
+        }
+      }
+    },
+    "Bis morgen um 08:00": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Until tomorrow at 08:00"
+          }
+        }
+      }
+    },
+    "Details anzeigen": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show details"
+          }
+        }
+      }
+    },
+    "Für eine Stunde": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "For one hour"
+          }
+        }
+      }
+    },
+    "Backup benötigt Aufmerksamkeit": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Backup needs attention"
+          }
+        }
+      }
+    },
+    "Deine Daten wurden gesichert. Den Prüfstatus findest du in MacKopia.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your data has been backed up. Check verification status in MacKopia."
+          }
+        }
+      }
+    },
+    "Erneut versuchen": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retry"
+          }
+        }
+      }
+    },
+    "Erstes Backup abgeschlossen": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "First backup completed"
+          }
+        }
+      }
+    },
+    "Prüfe den Status in MacKopia. Dort findest du den nächsten Schritt.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Check the status in MacKopia for the next step."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

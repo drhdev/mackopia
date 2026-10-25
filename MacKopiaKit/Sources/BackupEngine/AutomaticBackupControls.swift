@@ -33,6 +33,7 @@ extension AutomaticBackupRuntime {
             throw DomainValidationError.invalidPlan
         }
         guard controls.isEmpty, monitorTask != nil else { throw RepositoryOperationError.repositoryBusy }
+        requestedChecks.removeAll { planID == nil || $0 == planID }
         let id = UUID()
         controls[planID] = id
         controlVersion &+= 1
@@ -42,6 +43,9 @@ extension AutomaticBackupRuntime {
             blockingAll = true
             generation &+= 1
         }
+        // Hold dequeue before joining post-processing. Its completion must not let the drain
+        // start a queued backup while stop/pause is still waiting to clear or pause that work.
+        await queue.beginControl(id)
         await cancelPostBackup(planID: planID)
         await scheduler.stop()
         await suppressEvents(planID: planID)
@@ -69,6 +73,9 @@ extension AutomaticBackupRuntime {
         let version = controlVersion
         await refreshEvents(version: version)
         if state == .running, controlVersion == version { await startScheduler() }
+        // Pause reconciliation can change the scheduler revision while refreshEvents suspends.
+        // Always release this control's token; a newer control retains its own independent hold.
+        await queue.endControl(id)
     }
 
     func suppressEvents(planID: UUID?) async {
@@ -119,6 +126,7 @@ extension AutomaticBackupRuntime {
 
     func shutdown(failed: Bool) async {
         if let shutdownTask { await shutdownTask.value; return }
+        requestedChecks.removeAll()
         state = .stopping
         generation &+= 1
         let task = Task { await self.finishShutdown(failed: failed) }

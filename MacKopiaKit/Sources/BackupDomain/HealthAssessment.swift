@@ -1,29 +1,29 @@
 import Foundation
 
 /// Fixed facts and follow-up actions; presentation localizes these codes at the UI boundary.
-public struct HealthAssessment: Sendable, Equatable {
-    public enum Severity: Int, Sendable, Comparable {
+public struct HealthAssessment: Codable, Sendable, Equatable {
+    public enum Severity: Int, Codable, Sendable, Comparable {
         case ok, warning, critical
         public static func < (lhs: Self, rhs: Self) -> Bool { lhs.rawValue < rhs.rawValue }
     }
 
-    public enum Action: Sendable {
+    public enum Action: String, Codable, Sendable {
         case backUpNow, reviewActivity, reviewDestination, enterPassword, openFullDiskAccess
         case enableBackgroundService, runVerification, reviewDiagnostics
     }
 
-    public enum Reason: Sendable, CaseIterable {
+    public enum Reason: String, Codable, Sendable, CaseIterable {
         case backupOverdue, backupCriticallyOverdue, noSuccessfulBackup, lastRunWarnings, lastRunFailed
         case destinationNearlyFull, passwordMissing, passwordIncorrect, fullDiskAccessMissing
         case backgroundServiceDisabled, verificationOverdue, verificationFailed, verificationUnavailable
-        case historyUnavailable
+        case historyUnavailable, testRestoreFailed, maintenanceFailed
         case suspiciousSnapshot, snapshotPinFailed
 
         public var severity: Severity {
             switch self {
             case .backupCriticallyOverdue, .passwordMissing, .passwordIncorrect, .fullDiskAccessMissing,
                 .backgroundServiceDisabled, .verificationFailed, .historyUnavailable, .suspiciousSnapshot,
-                .snapshotPinFailed:
+                .snapshotPinFailed, .testRestoreFailed:
                 .critical
             default: .warning
             }
@@ -33,6 +33,8 @@ public struct HealthAssessment: Sendable, Equatable {
             switch self {
             case .backupOverdue, .backupCriticallyOverdue, .noSuccessfulBackup: .backUpNow
             case .lastRunWarnings, .lastRunFailed, .suspiciousSnapshot, .snapshotPinFailed: .reviewActivity
+            case .testRestoreFailed: .reviewActivity
+            case .maintenanceFailed: .reviewDestination
             case .destinationNearlyFull: .reviewDestination
             case .passwordMissing, .passwordIncorrect: .enterPassword
             case .fullDiskAccessMissing: .openFullDiskAccess

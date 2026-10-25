@@ -464,7 +464,7 @@ Jede tatsächliche Ausführung durchläuft wieder ConfigStore, UUID-/Zugriffs-/N
 geschützten Engine-Pfad. Historisch abgeschlossene Erfolge/Warnungen/Fehler/Skips werden nicht wiederholt;
 gespeicherte Cancellation-Absicht darf hingegen nach Pause/Shutdown fortgesetzt werden. Bei Shutdown
 wird Persistenz vor Worker-Abbruch getrennt, damit die letzte Absicht ohne neue globale Pause erhalten bleibt.
-Retry-Ketten und noch nicht angenommene Trigger-Evidenz bleiben flüchtig. Agent-/XPC-Anbindung bleibt separat.
+Retry-Ketten und noch nicht angenommene Trigger-Evidenz bleiben flüchtig. Agent-/XPC-Steuerung ist über den gemeinsamen Dienstpfad in §7.5 verdrahtet.
 Die gemeinsame Package-Laufzeit wird in §7.5 beschrieben. Niedrigstufige `takeNext`-Aufrufer ohne registrierten Task
 bleiben selbst für Abbruch/Bereinigung verantwortlich; die Engine verwendet den registrierten Runner.
 
@@ -681,7 +681,7 @@ erhalten. Timer-Stopp verhindert weitere Zustellungen, beendet aber keinen berei
 Der Empfänger muss jede Anforderung frisch über `ConfiguredJobRunner` zulassen und den geschützten
 Engine-Pfad verwenden. `observeSystemEvents` verbindet den Scheduler über einen injizierten Monitor
 mit Wake-, Uhrzeit- und Zeitzonenereignissen; andere Zustände werden als Hinweise weitergegeben.
-Die Package-Laufzeitkomposition einschließlich automatischer Historienanker ist in §7.5 beschrieben; Agent-Anbindung bleibt separat offen;
+Die Package-Laufzeitkomposition einschließlich automatischer Historienanker ist in §7.5 beschrieben; Agent-Anbindung erfolgt über `LocalBackupService`;
 dieser Actor schaltet keine Quellfreigabe frei.
 
 ### 7.4 Trigger-Monitore (`SystemIntegration`)
@@ -718,7 +718,7 @@ verhindern Zugriffe auf freigegebene Besitzer. Abbruch wartet auf beide Beobacht
 Callbacks und Notification-Abonnements. Ein unerwartetes Stream-Ende oder Überlauf des auf 256 Ereignisse
 begrenzten nativen Puffers liefert einen Fehler statt stillen Ereignisverlusts. Doppelte Power-/Netzwerk-
 und Mount-Zustände werden unterdrückt. Der Netzwerkzustand ist kein Erreichbarkeitsnachweis für ein
-Speicherziel. Die produktive Agent-Komposition bleibt separat offen.
+Speicherziel. Die produktive Agent-Komposition erfolgt über `LocalBackupService` (§7.5).
 
 `EventTriggerCoordinator` ordnet UUID-Ereignisse aktivierten Plänen mit `onVolumeMount` und passender
 Quell- oder Zielvolume-UUID zu. Ein abbrechbarer monotoner Timer entprellt relevante Mount-Ereignisse pro
@@ -741,7 +741,7 @@ persistente Trigger-Zustände oder produktive Agent-/XPC-Komposition. Die automa
 
 ### 7.5 Job-Queue & Zustandsmaschine
 
-**Produktiver manueller Phase-1-Pfad:** Genau ein `LocalBackupService` im Hintergrunddienst besitzt
+**Produktiver Dienstpfad (Phase 1/2):** Genau ein `LocalBackupService` im Hintergrunddienst besitzt
 ConfigStore, HistoryStore, Keychain, Repository-Gate und die Lauf-/Setup-Steuerung. Die App importiert
 weiterhin nur AgentProtocol/BackupDomain. Die lokale Einrichtung erzeugt oder verbindet ein bestehendes
 Dateisystemziel; Anlegen verlangt einen leeren vorhandenen Ordner und mindestens zwölf Passwortzeichen.
@@ -751,11 +751,23 @@ Die einmal gewählte Snapshot-Identität wird bei weiteren Zielen wiederverwende
 
 Anlegen/Verbinden und Konfigurationsänderungen sind gegen aktive Läufe serialisiert. Ein unbekannter
 Schreibausgang entfernt weder Zielinhalte noch möglicherweise gespeicherte Credentials. Weitere Pläne
-verwenden vorhandene Ziele; der Editor ändert Name, Aktivierung, Quellen und Aufbewahrung. Neue Pläne
-haben nur den manuellen Trigger; automatische Runtime/Health/Wartung werden in Phase 2 angeschlossen.
+verwenden vorhandene Ziele; der Editor ändert Name, Aktivierung, Quellen, Aufbewahrung, Intervalle,
+tägliche Uhrzeit, Mount-Trigger, Nachholen, Netzteilbedingung und optionales Auswerfen.
+Neue Pläne bleiben bis zur bewussten Zeitplanwahl manuell. Bestehende komplexe/Wochentagstermine
+bleiben über „Bestehende Termine beibehalten“ unverändert; „Täglich“ bedeutet alle sieben Tage.
 Konfigurationsfehler sperren die Freigabe; nur die explizit bestätigte Recovery-Anfrage stellt eine gültige
-Sicherung wieder her. Nach Dienstneustart werden verwaiste laufende Historieneinträge als unterbrochen
-abgeschlossen, ohne automatische Wiederholung. Shutdown wartet auf laufende Mutation und Run-Cleanup.
+Sicherung wieder her. `LocalBackupService` besitzt genau eine `AutomaticBackupRuntime`, die auch manuelle
+Anfragen entgegennimmt. Nach Dienstneustart werden dauerhafte Queue-Absichten und Pausen gemäß §6.6
+wiederhergestellt; Historienabgleich erfindet keine Erfolge. Shutdown joint Runtime, Mutation und Cleanup.
+
+Dienstmutationen sperren Admission und Queue-Entnahme vor jedem suspendierenden Setup-/Schreibschritt;
+aktive Backups führen zu `busy`, bevor die Mutation beginnt. Steueroperationen halten eigene UUID-Token
+in der Queue, bis ihre Nacharbeit beendet ist. So kann die Abbruchbereinigung einer Prüfung keinen
+Folgelauf vor Pause/Stopp starten; eine neue Steueroperation behält ihre eigene Sperre.
+Explizite Verify-Anfragen laufen über denselben seriellen Drain wie Backups und automatische Nacharbeit.
+Ausstehende explizite Prüfungen sind flüchtig; erst abgeschlossene Ergebnisse sind dauerhafte Evidenz.
+Monitoringfehler sperren die Runtime; die explizite Aktion „Automatik neu starten“ joint den alten Besitzer
+und startet eine frische Beobachtung unter Erhalt von Konfiguration und dauerhaften Pausen/Queue-Absichten.
 
 
 ```
@@ -780,7 +792,7 @@ ein Plan aktiv ist, wird höchstens ein weiterer Auftrag dafür vorgemerkt. Ande
 entnommen werden; derselbe Plan bleibt bis zum bestätigten Abschluss gesperrt. Abschluss benötigt die
 konkrete Laufkennung, damit verspätete Rückmeldungen keinen neueren Lauf freigeben. Die Engine muss
 Abschluss erst nach vollständigem Operations-Cleanup melden und Planfreigabe, aktuellen ConfigStore-Stand
-sowie Repository-Sperre beim Start erneut prüfen. Die Queue startet selbst keine Prozesse; der Laufzeitbesitzer verbindet Scheduler, Retry, Historie und dauerhafte Wiederaufnahme. Agent-Anbindung bleibt offen.
+sowie Repository-Sperre beim Start erneut prüfen. Die Queue startet selbst keine Prozesse; die dienstbesessene Runtime verbindet Scheduler, Retry, Historie und dauerhafte Wiederaufnahme.
 
 `ConfiguredJobRunner` verbindet diese Queue explizit mit dem ConfigStore und der bestehenden geschützten
 Operationsgrenze. Einlieferung und Entnahme lösen Plan/Speicherziel erneut aus der Konfiguration auf:
@@ -886,7 +898,7 @@ Historie. Lesefehler stoppen den Start vor Scheduler/Monitoring. Nach suspendier
 Cancellation und Laufzeitgeneration erneut geprüft, damit Shutdown keine verspätete Aktivierung zulässt.
 Bestehende Login-/Nachholregeln gelten unverändert; dauerhafte Queue-Arbeit wird wie in §6.6 beschrieben restauriert. Die Konfiguration wird vor
 jeder Queue-Aufnahme/Operation frisch geprüft. Unbestätigte Quellfreigabe bleibt `skipped`, ohne einen
-Server zu öffnen. Kein Agent-/XPC-/UI-Einstieg wurde damit produktiv aktiviert;
+Server zu öffnen. `LocalBackupService` aktiviert diesen Pfad auch für Agent/XPC/UI;
 Persistenz noch nicht angenommener Trigger-Evidenz und Retry-Ketten sowie die Systemnachweise mit Ad-hoc-Vertriebsbuild bleiben offen.
 
 - Jeder Lauf erzeugt einen `JobRun`-Eintrag in der Historie (Start, Ende, Ergebnis, Statistik, Snapshot-IDs, Fehlerliste,
@@ -916,10 +928,24 @@ ersetzt sein; der weiterhin gespeicherte Root bleibt die Inhaltsreferenz.
 Pin-Versuch und Nachlesen bleiben unter der bestehenden Repo-/Volume-Reservierung und SleepAssertion;
 Caller-Abbruch wartet auf diese begrenzten HTTP-Aufrufe, erhält das Quellergebnis und beendet weitere
 Quellen. Der automatische Lauf liefert den kritischen Ereigniscode erst nach Cleanup und Queue-Freigabe,
-auch bei anschließendem Abbruch/Fehler. Betriebssystem-Mitteilungen folgen mit Agent-/UI-Komposition;
+auch bei anschließendem Abbruch/Fehler. Betriebssystem-Mitteilungen sind an die Agent-Komposition angeschlossen (§11.4);
 ein automatisches Entpinnen oder Aussetzen der Aufbewahrung ist nicht implementiert.
 
 ### 7.6 Wartung & Prüfung
+
+**Produktive Phase-2-Komposition:** Nach einem warnungsfreien erfolgreichen Lauf führt die alleinige
+Runtime fällige 1-/10-Prozent-Verify-Stufen, den Test-Restore und die frische Wartungsprüfung seriell aus.
+Alle verwenden denselben ConfigStore, HistoryStore, Keychain, Repo-Gate und Volume-/FDA-Schutz.
+`MaintenanceHistory` speichert tatsächliche Full-Abschlüsse bzw. Fehler append-only mit Ziel-UUID,
+Zeitpunkt und festem Ergebnis. Ein übersprungener oder abgebrochener Versuch erzeugt keinen Erfolg;
+Owner und Termin werden nicht übernommen oder erzwungen. Test-Restore-Fehler bleiben in Health kritisch,
+Wartungsfehler als Warnung sichtbar, auch nach Neustarts. Die folgenden Batch-Notizen beschreiben
+Entstehung und Einzelverträge; ihre frühere offene Agent-Anbindung ist durch diesen Dienstpfad erfüllt.
+
+Optionales Auswerfen erfolgt erst nach Abschluss der seriellen Nacharbeit, unter derselben Repo-Sperre
+und erneuter Konfigurations-/Volume-UUID-Prüfung. Nur abnehmbare lokale Volumes sind zulässig.
+DiskArbitration nutzt normale Unmount-/Eject-Optionen, respektiert Veto anderer Anwendungen und joint
+native Rückmeldungen auch bei Cancellation. Kein Force-Unmount. Reale Hardware-Abnahme bleibt offen.
 
 - **Wartung**: Kopia-Server führt Quick-/Full-Maintenance automatisch aus, wenn der Rechner Owner ist. Der `MaintenanceCoordinator`
   prüft nach jedem erfolgreichen Lauf `maintenance info --json` und startet fällige Full-Maintenance explizit
@@ -1075,8 +1101,9 @@ Aktuelle Passwort-/FDA-/Dienst-Beobachtungen, Kapazität und Prüfergebnis werde
 bleibt eine Warnung statt eines grünen Vertrauenssignals. Erfolgreiche Prüfungen enthalten Prüfzeit und
 Fälligkeit; zukünftige/ungültige Nachweise warnen, fehlgeschlagene Prüfungen sind kritisch. Die festen
 Codes enthalten keine Pfade, Secrets oder technischen Rohdiagnosen. Lokalisierte Darstellung,
-Mitteilungsversand, Ausführung von Verify/Test-Restore und Wartung sowie
-produktive Agent-/XPC-Komposition bleiben weitere Batch-4/5-Aufgaben.
+Prüf-/Wartungsnachweise und konkrete Folgeaktionen sind über den Dienst an Fenster und Menüleiste
+angeschlossen. Frische Preflight-Warnungen zur Zielkapazität werden als Beobachtung übernommen;
+die Health-Abfrage selbst startet weiterhin keine Prozesse oder Secret-/Zugriffsproben.
 
 ---
 
@@ -1439,6 +1466,16 @@ bis morgen / unbegrenzt“, „MacKopia öffnen“, „Wiederherstellen…“. E
 „Hintergrunddienst beenden“ steht unter „Erweitert“, deaktiviert alle automatischen Backups und verlangt eine Bestätigung.
 
 ### 11.4 Mitteilungen (`UserNotifications`, aus dem Agent)
+
+**Verdrahteter Stand:** explizite Einstellung `notificationsEnabled` in der Agent-Konfiguration,
+Standard aus (auch beim Decoding älterer Schema-1-Dateien). Nur die bewusste Aktivierung fordert die
+Systemberechtigung an; Wiederanlauf und Previews erzeugen keinen Berechtigungsdialog.
+Probleme werden pro Plan höchstens einmal je 24 Stunden gemeldet, der erste erfolgreiche Lauf einmal;
+reguläre Erfolge und erwartetes Warten auf Energie-/Netzwerkbedingungen bleiben still.
+Die reine `BackupNotificationPolicy` ist getestet; das nicht geheime UUID-/Datumsledger liegt im Agent
+in UserDefaults. Mitteilungsdaten enthalten feste Texte und eine Plan-UUID; „Erneut versuchen“ und
+„Details anzeigen“ führen zurück in den Dienst bzw. die App. Nativer Zustellnachweis bleibt offen.
+Weitere Mitteilungsvarianten und die unten genannten erweiterten Aktionen gehören zur UI-Abnahme in Phase 5.
 - Nur relevante: Fehler, Warnungen, „Laufwerk erkannt – Backup gestartet“ (abschaltbar), erstes erfolgreiches Backup,
   Health kritisch (max. 1×/Tag), Plausibilitätswarnung. Erfolgsmeldungen bei jedem Lauf standardmäßig **aus**.
 - Aktionen in Mitteilungen: „Erneut versuchen“, „Details“, „Backup stoppen & auswerfen“.
@@ -1452,7 +1489,7 @@ Byte-/Datumsformatierung ausschließlich mit `ByteCountFormatStyle`, `Date.Forma
 
 ## 12. App ↔ Agent-Protokoll
 
-**Verdrahteter Phase-1-Vertrag (Version 2):** `AgentServiceClient/Server` transportieren begrenzte
+**Verdrahteter Phase-1/2-Vertrag (Version 3):** `AgentServiceClient/Server` transportieren begrenzte
 JSON-Daten in einem Codable-XPC-Umschlag. Vor der Domain-Dekodierung gelten 1 MiB für Requests und
 16 MiB für Antworten. Version/UUID korrelieren jede Antwort; Secrets sind nur im Setup-Request zulässig.
 Jede authentifizierte Sitzung nimmt genau einen Request an und sendet die asynchrone Antwort über
@@ -1460,8 +1497,11 @@ dieselbe Sitzung. Die öffentlichen Produktionskonstruktoren erzwingen weiterhin
 der anonyme Testendpoint existiert ausschließlich im Testtarget.
 
 Implementiert: Zustand, lokales Erzeugen/Verbinden, neuer Plan am vorhandenen Ziel, validiertes Plan-Update,
-explizite Konfigurations-Recovery, manueller Start und Stopp. Zustände enthalten Konfiguration, maximal
-50 jüngste Läufe, aktive Plan-ID, Fortschritt und feste Fehlercodes. `state(after:)` wartet ereignisgesteuert
+explizite Konfigurations-Recovery, manueller Start/Stopp, Plan-/globale Pause mit absoluter Frist,
+Fortsetzen, explizites Verify, Mitteilungseinstellung und Automatik-Neustart. Zustände enthalten
+Konfiguration, maximal 50 jüngste Läufe, aktive Plan-ID, Fortschritt und feste Fehlercodes sowie
+planbezogene Termine/Pausen/Health und artgetrennte Verify-/Test-Restore-/Wartungsnachweise.
+Ungültige Daten und nicht endliche Fristen werden mit festem Fehler abgewiesen; Version 2 wird nicht still weiterverwendet. `state(after:)` wartet ereignisgesteuert
 auf eine neue Revision (maximal 25 s / acht Beobachter); so transportiert eine neue Momentaufnahme
 State-/Progress-/Run-Ereignisse ohne Idle-Polling. Clientfrist 90 s, Cancellation trennt die Sitzung und
 beendet den zugehörigen Request; ein bereits angenommener Lauf gehört dem Dienst bis zum expliziten Stopp.
@@ -1559,7 +1599,7 @@ Der [alte Plan](history/PLAN-bis-2026-10-25.md) dient nur zum Verständnis histo
 - Neue Plattform-APIs werden anhand des installierten macOS-27-SDKs ausgewählt. Native Effizienz,
   Klarheit und Barrierefreiheit sind das Ziel; zusätzliche Frameworks ohne konkreten Bedarf sind es nicht.
 
-### Phase 1 – Nutzbarer lokaler Backup-Workflow (aktiver Auftrag)
+### Phase 1 – Nutzbarer lokaler Backup-Workflow (implementiert)
 
 **Ergebnis:** Die native App kann ein lokales Speicherziel und einen Plan anlegen/verbinden,
 ein Backup auslösen/stoppen und echten Status samt Ergebnis anzeigen; der Dienst besitzt die Engine.
@@ -1795,6 +1835,11 @@ Neuere ausdrücklich ersetzende Entscheidungen haben Vorrang; alte Phasen-/Platt
 | 2026-10-25 | Monatliche Verify-Stufe aus dauerhaft gespeichertem Dateianteil | §7.6: mindestens 10 Prozent alle 30 Tage, vorrangig vor gleichzeitig fälliger Wochenprüfung; größere explizite Prüfungen zählen mit. Wochenprüfungen verschieben den Monatstermin nicht. Legacy ohne Anteil bleibt lesbar, zählt aber nicht monatlich; automatische Health-Gültigkeit weiterhin sieben Tage. |
 | 2026-10-25 | Geschützte lesende Wartungsauswertung vor der Ausführungsanbindung | §7.6: gemeinsamer Repo-Schutz, exakte stabile Owner-Identität, typisierter Full-Termin; keine Owner-Änderung oder Wartungsausführung durch die Beobachtung. Echter gepinnter CLI-Vertrag im temporären Speicherziel geprüft. |
 | 2026-10-25 | Fällige Full-Wartung mit frischer Owner-/Terminprüfung unter gemeinsamer Reservierung | §7.6: reguläres `maintenance run --full` ohne Force-/Safety-Overrides; Konfigurationsabgleich, SleepAssertion und Abbruch-Cleanup wie Backup. Nur temporäres Testziel live geprüft; automatische Nacharbeit und dauerhafte Evidenz separat. |
+
+
+| 2026-10-25 | Phase 2: gemeinsame produktive Automatik statt separater manueller Engine | §7.5/§12: LocalBackupService besitzt die einzige Runtime; manuelle und automatische Läufe, persistente Pausen/Queue-Recovery, Health und serielle Nacharbeit über denselben Schutzpfad. XPC Version 3; Steuer-UUID-Sperren verhindern Folgeläufe während Abbruchbereinigung. |
+| 2026-10-25 | Additive Mitteilungseinstellung und wartungsbezogene Evidenz | §7.2/§7.6/§11.4: ältere Konfigurationen lesen notificationsEnabled=false; Agent fordert Berechtigung nur nach expliziter Aktivierung an. Dauerhafte Wartungsergebnisse in eigener SQLite-Tabelle, Restore-Fehler kritisch. Routineerfolge bleiben still; Problemlimit pro Plan 24 Stunden. |
+| 2026-10-25 | Optionales sicheres Auswerfen nach serieller Backup-Nacharbeit | §7.4/§7.6: ausschließlich lokale abnehmbare UUID-gebundene Volumes, reguläre DiskArbitration-Optionen, kein Force. Gemeinsame Repo-Sperre bis zur nativen Rückmeldung. Nur Ablehnung falscher/nicht abnehmbarer Volumes automatisiert geprüft; Hardware-Audit separat. |
 
 ---
 

@@ -42,7 +42,14 @@ final class AgentAppDelegate: NSObject, NSApplicationDelegate {
                     case .recoverConfiguration: try await service.recoverConfiguration()
                     case .savePlan(let plan): try await service.savePlan(plan)
                     case .run(let id): try await service.run(id)
+                    case .setNotificationsEnabled(let enabled):
+                        try await service.setNotificationsEnabled(enabled)
+                        if enabled { await self.runtime.notifications.requestPermission() }
+                    case .restartAutomation: try await service.restartAutomation()
+                    case .verify(let id): try await service.verify(id)
                     case .stop(let id): try await service.stop(id)
+                    case .pause(let id, let until): try await service.pause(planID: id, until: until)
+                    case .resume(let id): try await service.resume(planID: id)
                     }
                     return try await service.state()
                 }

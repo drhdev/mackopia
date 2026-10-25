@@ -11,6 +11,7 @@ final class AgentConnection {
     var message: String?
     var showSetup = false
     var showRecovery = false
+    var showActivity = false
     var editingPlan: BackupPlan?
     private var client: AgentServiceClient?
     private var registration: AgentServiceRegistration?
@@ -87,6 +88,12 @@ final class AgentConnection {
         guard let id = id ?? state?.configuration?.plans.first?.id else { return }
         send(.run(id))
     }
+    func pause(_ option: BackupPauseOption, planID: UUID? = nil) {
+        do { send(.pause(planID: planID, until: try option.deadline(after: .now))) } catch {
+            message = Self.description(.invalidRequest)
+        }
+    }
+    func resume(_ planID: UUID? = nil) { send(.resume(planID: planID)) }
     func stop() { if let id = state?.activePlanID { send(.stop(id)) } }
 
     func chooseDirectory(completion: @escaping (BackupSource) -> Void) {
@@ -135,6 +142,15 @@ final class AgentConnection {
 
     static func description(_ issue: LocalServiceIssue) -> String {
         switch issue {
+        case .waitingConditions: String(localized: "Backup wartet auf passende Energie- oder Netzwerkbedingungen.")
+        case .planPaused: String(localized: "Backup-Plan pausiert. Setze ihn fort, bevor du ein Backup startest.")
+        case .automationUnavailable:
+            String(localized: "Automatik angehalten. Starte den Hintergrunddienst neu und prüfe die Aktivität.")
+        case .verificationFailed:
+            String(
+                localized: "Prüfung nicht erfolgreich. Prüfe Speicherziel und Aktivität und starte die Prüfung erneut.")
+        case .maintenanceFailed:
+            String(localized: "Wartung nicht abgeschlossen. Prüfe das Speicherziel und die Aktivität.")
         case .permissions:
             String(
                 localized:

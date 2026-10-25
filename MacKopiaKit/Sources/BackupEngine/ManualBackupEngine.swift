@@ -11,6 +11,7 @@ package enum ManualBackupStage: Sendable, Equatable {
 /// Protected execution shared by explicit manual requests and the package automatic runtime.
 package actor ManualBackupEngine {
     private let runner: ConfiguredJobRunner
+    private let handlesEjection: Bool
     private let sleep: any SleepPreventing
     private let sessions: any BackupSessionOpening
     private let history: any JobHistoryRecording
@@ -19,18 +20,21 @@ package actor ManualBackupEngine {
     private let clock: any Clock<Duration>
     private let now: @Sendable () -> Date
     private let progress: @Sendable (BackupProgress) async -> Void
+    private let preflightObserved: @Sendable (UUID, BackupPreflightReport) async -> Void
     private let stageChanged: @Sendable (ManualBackupStage) async -> Void
     private var active = false
 
     package init(
         runner: ConfiguredJobRunner, sessions: any BackupSessionOpening, history: any JobHistoryRecording,
         resolver: TimeMachineExclusionResolver, homeDirectory: String,
-        sleep: any SleepPreventing = LocalSleepPreventer(),
+        sleep: any SleepPreventing = LocalSleepPreventer(), handlesEjection: Bool = false,
         clock: any Clock<Duration> = ContinuousClock(), now: @escaping @Sendable () -> Date = { .now },
         progress: @escaping @Sendable (BackupProgress) async -> Void = { _ in },
+        preflightObserved: @escaping @Sendable (UUID, BackupPreflightReport) async -> Void = { _, _ in },
         stageChanged: @escaping @Sendable (ManualBackupStage) async -> Void = { _ in }
     ) {
         self.sleep = sleep
+        self.handlesEjection = handlesEjection
         self.runner = runner
         self.sessions = sessions
         self.history = history
@@ -39,6 +43,7 @@ package actor ManualBackupEngine {
         self.clock = clock
         self.now = now
         self.progress = progress
+        self.preflightObserved = preflightObserved
         self.stageChanged = stageChanged
     }
 
@@ -50,6 +55,7 @@ package actor ManualBackupEngine {
     /// Caller cancellation stops the current source and skips the rest; no automatic resumption.
     /// History writes run outside cancellation and finish before the queue releases the run identity.
     package func performNext(
+        started: @escaping @Sendable (UUID) async -> Void = { _ in },
         suspiciousSnapshot: @escaping @Sendable (JobRun) async -> Void = { _ in },
         finished: @escaping @Sendable (BackupJob, Result<JobRun, any Error>) async -> Void = { _, _ in }
     ) async throws -> JobRun? {
@@ -58,7 +64,7 @@ package actor ManualBackupEngine {
         defer { active = false }
         let record = ManualRunRecord(now: now)
         do {
-            try await execute(record: record)
+            try await execute(record: record, started: started)
             let run = await record.completed
             if let run, run.issues.contains(.suspiciousSnapshot) { await suspiciousSnapshot(run) }
             if let job = await record.job, let run { await finished(job, .success(run)) }
@@ -73,8 +79,9 @@ package actor ManualBackupEngine {
     }
 
     /// Completion observation happens only after the runner releases the queue following cleanup.
-    private func execute(record: ManualRunRecord) async throws {
+    private func execute(record: ManualRunRecord, started: @escaping @Sendable (UUID) async -> Void) async throws {
         let sleep = sleep
+        let handlesEjection = handlesEjection
         let sessions = sessions
         let history = history
         let resolver = resolver
@@ -82,15 +89,17 @@ package actor ManualBackupEngine {
         let clock = clock
         let progress = progress
         let stageChanged = stageChanged
+        let preflightObserved = preflightObserved
         _ = try await runner.performNextJob(
             admitted: { job in
                 let run = await record.begin(job)
                 try await history.begin(run)
+                await started(job.plan.id)
             },
             operation: { job, repository, sources in
                 guard case .filesystem = repository.kind else { throw BackupOperationError.operationFailed }
                 guard job.plan.options.parallelism == nil, job.plan.options.uploadLimitMbps == nil,
-                    !job.plan.options.ejectVolumeAfterBackup
+                    !job.plan.options.ejectVolumeAfterBackup || handlesEjection
                 else { throw BackupOperationError.unsupportedOptions }
                 try Task.checkCancellation()
                 let assertion = try sleep.acquire()
@@ -142,6 +151,11 @@ package actor ManualBackupEngine {
                 return true
             },
             finalized: { job, result in
+                switch result {
+                case .success(.notStarted(let report)), .success(.completed(_, let report)):
+                    await preflightObserved(job.plan.id, report)
+                default: break
+                }
                 let run = await record.finish(job: job, result: result)
                 try await Task.detached { try await history.finish(run) }.value
             })

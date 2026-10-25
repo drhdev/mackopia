@@ -17,6 +17,12 @@ package actor AutomaticBackupRuntime<C: Clock> where C.Duration == Duration {
     let engine: ManualBackupEngine
     let verification: AutomaticSnapshotVerification?
     let testRestore: AutomaticTestRestore?
+    let maintenance: (@Sendable (JobRun) async throws -> Void)?
+    let activity: @Sendable (UUID?) async -> Void
+    let changed: @Sendable () async -> Void
+    let check: (@Sendable (UUID) async throws -> Void)?
+    var requestedChecks: [UUID] = []
+    var checkingPlanID: UUID?
     var postBackupTask: (planID: UUID, task: Task<Void, any Error>)?
     let scheduler: Scheduler
     let clock: C
@@ -72,13 +78,20 @@ package actor AutomaticBackupRuntime<C: Clock> where C.Duration == Duration {
     package init(
         store: ConfigStore, coordinator: BackupOperationCoordinator, sessions: any BackupSessionOpening,
         history: any JobHistoryRecording, resolver: TimeMachineExclusionResolver, homeDirectory: String,
-        loginDate: Date, clock: C, now: @escaping @Sendable () -> Date = { .now },
+        loginDate: Date, clock: C, executionClock: (any Clock<Duration>)? = nil,
+        now: @escaping @Sendable () -> Date = { .now },
         monitor: any SystemEventMonitoring = LocalSystemEventMonitor(),
         reachability: any DestinationReachabilityChecking = TCPReachabilityChecker(),
         calendar: @escaping @Sendable () -> Calendar = { .current },
         jitter: @escaping @Sendable () -> Double = { .random(in: -60...60) },
         verification: AutomaticSnapshotVerification? = nil,
         testRestore: AutomaticTestRestore? = nil,
+        check: (@Sendable (UUID) async throws -> Void)? = nil,
+        maintenance: (@Sendable (JobRun) async throws -> Void)? = nil,
+        progress: @escaping @Sendable (BackupProgress) async -> Void = { _ in },
+        activity: @escaping @Sendable (UUID?) async -> Void = { _ in },
+        preflightObserved: @escaping @Sendable (UUID, BackupPreflightReport) async -> Void = { _, _ in },
+        changed: @escaping @Sendable () async -> Void = {},
         issue: @escaping @Sendable (AutomaticBackupIssue) async -> Void
     ) {
         historySchedule = history as? any JobHistoryScheduleReading
@@ -87,13 +100,15 @@ package actor AutomaticBackupRuntime<C: Clock> where C.Duration == Duration {
         self.store = store
         self.verification = verification
         self.testRestore = testRestore
+        self.check = check; self.maintenance = maintenance; self.activity = activity; self.changed = changed
         let queue = JobQueue(clock: clock, now: now, pausePersistence: store.pauseStore.makeSession())
         self.queue = queue
         let runner = ConfiguredJobRunner(store: store, queue: queue, coordinator: coordinator)
         self.runner = runner
         engine = ManualBackupEngine(
             runner: runner, sessions: sessions, history: history, resolver: resolver,
-            homeDirectory: homeDirectory, clock: clock, now: now)
+            homeDirectory: homeDirectory, handlesEjection: maintenance != nil, clock: executionClock ?? clock, now: now,
+            progress: progress, preflightObserved: preflightObserved)
         scheduler = Scheduler(loginDate: loginDate, calendar: calendar(), clock: clock, now: now, jitter: jitter)
         self.loginDate = loginDate
         self.clock = clock
@@ -215,6 +230,7 @@ package actor AutomaticBackupRuntime<C: Clock> where C.Duration == Duration {
             await refreshEvents(version: controlVersion)
             if state == .running { await startScheduler() }
         }
+        await changed()
         workRevision &+= 1
         guard drainTask == nil, state == .running else { return }
         drainTask = Task { [weak self] in
@@ -225,70 +241,25 @@ package actor AutomaticBackupRuntime<C: Clock> where C.Duration == Duration {
     func drain() async {
         defer { drainTask = nil }
         while state == .running, !Task.isCancelled {
+            guard controls.isEmpty else { return }
             let version = workRevision
+            if await performRequestedCheck() { continue }
             do {
-                let run = try await engine.performNext(suspiciousSnapshot: { [weak self] run in
-                    await self?.issue(.suspiciousSnapshot(planID: run.planID, runID: run.id))
-                }) { [weak self] job, result in
+                let run = try await engine.performNext(
+                    started: activity,
+                    suspiciousSnapshot: { [weak self] run in
+                        await self?.issue(.suspiciousSnapshot(planID: run.planID, runID: run.id))
+                    }
+                ) { [weak self] job, result in
                     await self?.finished(job, result: result)
+                    await self?.activity(nil)
+                    await self?.changed()
                 }
                 if run == nil, workRevision == version { return }
             } catch {
                 if Task.isCancelled { return }
                 // The completion observer handles the fixed failure event or retry after queue release.
             }
-        }
-    }
-
-    func finished(_ job: BackupJob, result: Result<JobRun, any Error>) async {
-        guard state == .running, !blockingAll, !blockedPlans.contains(job.plan.id) else { return }
-        let version = generation
-        let planVersion = planVersions[job.plan.id, default: 0]
-        switch result {
-        case .success(let run):
-            await retries.reset(planID: job.plan.id)
-            let paused = await queue.isPaused(job.plan.id)
-            guard current(job.plan.id, generation: version, planVersion: planVersion),
-                !paused, !Task.isCancelled, verification != nil || testRestore != nil
-            else { return }
-            let verification = verification
-            let testRestore = testRestore
-            let issue = issue
-            let task = Task {
-                if let verification {
-                    do { try await verification.afterBackup(run) } catch {
-                        if Task.isCancelled || error is CancellationError { throw CancellationError() }
-                        await issue(.verificationFailed(planID: job.plan.id))
-                    }
-                }
-                try Task.checkCancellation()
-                if let testRestore {
-                    do { try await testRestore.afterBackup(run) } catch {
-                        if Task.isCancelled || error is CancellationError { throw CancellationError() }
-                        await issue(.testRestoreFailed(planID: job.plan.id))
-                    }
-                }
-            }
-            postBackupTask = (job.plan.id, task)
-            _ = await task.result
-            postBackupTask = nil
-        case .failure(let error):
-            guard !(error is CancellationError), !(await queue.isPaused(job.plan.id)) else {
-                await retries.reset(planID: job.plan.id)
-                return
-            }
-            do {
-                let configuration = try await store.currentConfiguration()
-                guard let repository = configuration.repositories.first(where: { $0.id == job.plan.repositoryID })
-                else {
-                    await reportFailure(job.plan.id)
-                    return
-                }
-                guard current(job.plan.id, generation: version, planVersion: planVersion),
-                    !(await queue.isPaused(job.plan.id))
-                else { return }
-                await retries.failed(job: job, repository: repository, error: error)
-            } catch { await reportFailure(job.plan.id) }
         }
     }
 

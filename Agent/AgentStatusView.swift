@@ -28,6 +28,26 @@ struct AgentStatusView: View {
                     Text(run.startedAt, format: .relative(presentation: .named))
                 }
             }
+            if store.state?.globalPause != nil {
+                Label("Alle Backups pausiert", systemImage: "pause.circle")
+                Button("Fortsetzen") { store.resume() }
+            }
+            Menu("Pausieren") {
+                Button("Für eine Stunde") { store.pause(.oneHour) }
+                Button("Bis morgen um 08:00") { store.pause(.untilTomorrowMorning) }
+                Button("Unbegrenzt") { store.pause(.indefinite) }
+            }
+            ForEach(store.state?.plans ?? []) { plan in
+                LabeledContent(store.name(plan.planID)) {
+                    if let date = plan.health.lastSuccessfulBackup {
+                        Text(date, format: .relative(presentation: .named))
+                    }
+                }
+                Label(
+                    plan.health.severity == .ok ? "Backups aktuell und geprüft" : "Aktion erforderlich",
+                    systemImage: plan.health.severity == .ok ? "checkmark.circle" : "exclamationmark.triangle")
+
+            }
             Divider()
             Button("MacKopia öffnen") { store.openApp() }
         }

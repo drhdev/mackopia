@@ -21,10 +21,12 @@ struct LocalServiceIntegrationTests {
         let bytes = Data(UUID().uuidString.utf8)
         try bytes.write(to: source.appendingPathComponent("sample.txt"))
         let secrets = ServiceTestSecrets()
+        let time = SchedulerTestClock(date: .now)
         let service = try LocalBackupService(
             executable: NativeKopiaFixture.binary, home: root, temporary: root,
             expectedVersion: "0.23.1", secrets: secrets, sourceAccess: ServiceTemporaryAccess(root: root),
-            protection: LocalBackupOperationProtection())
+            protection: LocalBackupOperationProtection(), monitor: RuntimeMonitor(),
+            runtimeClock: ServiceClock(time), now: { time.date }, loginDate: time.date)
         try await service.start()
         let password = UUID().uuidString
         try await service.setup(
@@ -55,6 +57,31 @@ struct LocalServiceIntegrationTests {
         }
         let run = try #require(completed.runs.first)
         #expect(run.outcome == .succeeded)
+        #expect(completed.plans.first?.verification?.outcome == .succeeded)
+        #expect(completed.plans.first?.verification?.filesPercent == 10)
+        #expect(completed.plans.first?.testRestore?.outcome == .succeeded)
+        #expect(completed.plans.first?.health.severity == .ok)
+        // Persist a real time trigger through the same editor/service boundary, then advance
+        // the injected monotonic clock. No separate performNext or test-only engine is invoked.
+        let automatic = try BackupPlan(
+            id: plan.id, name: plan.name, isEnabled: true,
+            repositoryID: plan.repositoryID, sources: plan.sources, triggers: [.interval(minutes: 1)],
+            conditions: plan.conditions, retention: plan.retention, excludes: plan.excludes,
+            options: plan.options, health: plan.health)
+        try await service.savePlan(automatic)
+        let next = try #require(try await service.state().plans.first?.nextRun)
+        time.advance(next.timeIntervalSince(time.date) + 1)
+        try await waitForRuntime(timeout: .seconds(45)) {
+            let value = try await service.state()
+            return value.runs.count == 2 && value.activePlanID == nil
+        }
+        let scheduled = try await service.state()
+        #expect(scheduled.runs.first?.outcome == .succeeded)
+        #expect(scheduled.runs.first?.trigger == .interval(minutes: 1))
+        // Explicit checks also use the owner's serial drain, and keep their durable evidence.
+        try await service.verify(plan.id)
+        try await waitForRuntime(timeout: .seconds(45)) { try await service.state().activePlanID == nil }
+        #expect(try await service.state().plans.first?.verification?.filesPercent == 1)
         let snapshot = try #require(run.sources.first)
         let paths = try KopiaRepositoryPaths(repositoryID: repository.id, homeDirectory: root)
         let context = KopiaExecutionContext(
@@ -83,11 +110,13 @@ struct LocalServiceIntegrationTests {
         let reopened = try LocalBackupService(
             executable: NativeKopiaFixture.binary, home: root, temporary: root,
             expectedVersion: "0.23.1", secrets: secrets, sourceAccess: ServiceTemporaryAccess(root: root),
-            protection: ManualTestProtection())
+            protection: ManualTestProtection(), monitor: RuntimeMonitor(),
+            runtimeClock: ServiceClock(time), now: { time.date }, loginDate: time.date)
         try await reopened.start()
         let reconnected = try await reopened.state()
         #expect(reconnected.configuration == final.configuration)
-        #expect(reconnected.runs.first == run)
+        #expect(reconnected.runs.count == 2)
+        #expect(reconnected.runs.last == run)
         await reopened.shutdown()
         let connectingHome = root.appendingPathComponent("connecting-home")
         let connecting = try LocalBackupService(

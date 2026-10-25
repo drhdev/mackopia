@@ -9,6 +9,7 @@ package enum AutomaticBackupState: Sendable, Equatable {
 package enum AutomaticBackupIssue: Sendable, Equatable {
     case controlStateUnavailable, monitorUnavailable, configurationUnavailable
     case backupFailed(planID: UUID), admissionRejected(planID: UUID)
-    case testRestoreFailed(planID: UUID), verificationFailed(planID: UUID)
+    case testRestoreFailed(planID: UUID), verificationFailed(planID: UUID), maintenanceFailed(planID: UUID)
+    case ejectionFailed(planID: UUID)
     case suspiciousSnapshot(planID: UUID, runID: UUID)
 }

@@ -10,8 +10,10 @@ Alte Phasen-/Batch-Nummern in Kommentaren und Protokollen sind historische Refer
 - Stabile Toolchain: aktuell Xcode 27.1 / Swift-Compiler 6.4 / Sprachmodus Swift 6 / SDK 27.
 - SwiftUI/Observation/MainActor für UI-State; cancellable Actors/strukturierte Concurrency in Package und Dienst.
 - App → AgentProtocol/XPC → Agent → BackupEngine → KopiaCLI/KopiaServer; keine Kopia-Imports in App.
-- `AgentAppDelegate` besitzt einen `LocalBackupService`; lokale Einrichtung und manuelle Läufe teilen dessen Gate,
-  ConfigStore, HistoryStore, Keychain und Laufwerksschutz. Die automatische Runtime ist noch nicht angeschlossen.
+- `AgentAppDelegate` besitzt einen `LocalBackupService`, dieser genau eine `AutomaticBackupRuntime`.
+  Setup, manuelle/automatische Läufe und serielle Nacharbeit teilen Gate, Config/History, Keychain und Laufwerksschutz.
+- `LocalServiceMutations` sperrt Queue/Admission; UUID-Steuersperren in JobQueue halten Folgeläufe bis zum Cleanup.
+  `ServiceClock` ermöglicht virtuelle Terminierung bei separat injizierbarem Prozess-/Fortschrittstakt.
 - Ad-hoc-Signaturen ohne Apple-Konto, aktive Hardened Runtime, keine zusätzlichen Entitlements.
 - Xcode-Debug-Dylib deaktiviert; Produkttests außerhalb der App, ohne gelockerte Library Validation.
 
@@ -19,19 +21,19 @@ Alte Phasen-/Batch-Nummern in Kommentaren und Protokollen sind historische Refer
 
 | Bereich | Implementiert / relevante Einstiegsstellen | Noch zu verbinden |
 |---|---|---|
-| Domain | BackupDomain: validierte Quellen/Ziele/Pläne, UUID-Identität, Policies, Lauf-/Prüfergebnisse | Version-2-Requests tragen validierte Domain-Auswahl einschließlich Volume-UUID |
+| Domain | BackupDomain: validierte Quellen/Ziele/Pläne, UUID-Identität, Policies, Lauf-/Prüfergebnisse | Version-3-Requests tragen validierte Domain-Auswahl einschließlich Volume-UUID |
 | CLI | KopiaCLI: isolierte Prozesse, Whitelist-Umgebung, Timeout/Cancel/Reaping, begrenzte Pipes, Bootstrap/Binding, Verify, Restore-Stichprobe, Wartung lesen/ausführen | Lokaler Bootstrap/Backup im Dienst verdrahtet; Remote-Backends folgen |
 | Server | KopiaServer: loopback TLS, Zertifikatspin, Auth/CSRF, REST, Shutdown/Abbruch | Manueller Dienst-Lifecycle verdrahtet; Restore-Browser an UI folgt |
 | Konfiguration | Persistence/ConfigStore: atomare Konfiguration, Live-Reload-Grundlage | Dienstbesitz, validierte Mutationen und explizite Recovery über XPC verdrahtet |
-| Historie | Persistence/HistoryStore + VerificationHistory: dauerhafte Läufe und artgetrennte Prüfnachweise | Jüngste Läufe über XPC/Aktivität verdrahtet; Wartungsevidenz fehlt |
+| Historie | Persistence/HistoryStore + VerificationHistory: dauerhafte Läufe und artgetrennte Prüfnachweise | Läufe/Verify/Test-Restore plus append-only MaintenanceHistory; artgetrennte Evidenz über XPC/UI |
 | Secrets | Secrets/AgentKeychainStore → KeychainStore(): Login-Keychain, SecItem, Standard-App-ACL, LAContext ohne UI; alter Team-Adapter nur Vertragsbestand | Echte Agent-Keychain-/Update-Abnahme offen; kein Datei-Fallback |
 | Schutz | BackupPreflight, BackupOperationCoordinator, RepositoryOperationGate, SystemIntegration | Lokaler Dienst verwendet gemeinsames Gate/Schutz; AgentFullDiskAccessProbe verlangt frische Agent-/Kopia-Leseevidenz. Installierte TCC-Zuordnung offen |
 | Manuelle Engine | ManualBackupEngine, ConfiguredJobRunner, FilesystemBackupSessions, Policy-Abgleich | LocalBackupService → XPC → AgentConnection/Übersicht/Menüleiste verdrahtet |
-| Automatik | AutomaticBackupRuntime/Controls/State, Scheduler, Monitore, Retry/Pausen/Recovery/Historienabgleich | Phase 2: als alleinigen Queue-/Engine-Besitzer in LocalBackupService übernehmen; weitere Planoptionen |
-| Vertrauen | Health, Plausibilität/Pinning, SnapshotVerificationEngine, AutomaticSnapshotVerification, AutomaticTestRestore | Produktive Beobachtungen/UI; Wartungsnacharbeit und Mitteilungen |
-| Wartung | MaintenanceCoordinator, FilesystemMaintenanceInspection, KopiaMaintenanceReader/Runner | Frische Owner-/Terminprüfung existiert; automatische Runtime-Nacharbeit und dauerhafte Evidenz fehlen |
-| XPC | AgentSigningIdentity, AgentServiceClient/Server, AgentWirePacket/Request, AgentServiceRegistration; Version 2, Grenzen/Korrelation, asynchrone Antworten, Revisionsbeobachtung/Reconnect | Echter registrierter positiver/negativer Peer-Test; weitere Requests in Folgephasen |
-| UI | App/AgentConnection, LocalSetupStore/View, PlanEditorStore/View, FoundationView/Settings, PreviewData; Agent/AgentRuntimeStore und echte Menüleiste; DE/EN | Automatik/Health/Restore; manueller Design-/A11y-Audit |
+| Automatik | AutomaticBackupRuntime/Controls/State, Scheduler, Monitore, Retry/Pausen/Recovery/Historienabgleich | Als alleiniger Queue-/Engine-Besitzer verdrahtet; Pausen/Termine/Recovery und Live-Neustart über XPC/UI |
+| Vertrauen | Health, Plausibilität/Pinning, SnapshotVerificationEngine, AutomaticSnapshotVerification, AutomaticTestRestore | PlanRuntimeState/PlanRuntimeView zeigen Health/Folgeaktionen und dauerhafte Prüfnachweise; AgentNotifications |
+| Wartung | MaintenanceCoordinator, FilesystemMaintenanceInspection, KopiaMaintenanceReader/Runner | Frische Owner-/Terminprüfung, automatische serielle Nacharbeit und dauerhafte Ziel-Evidenz verdrahtet |
+| XPC | AgentSigningIdentity, AgentServiceClient/Server, AgentWirePacket/Request, AgentServiceRegistration; Version 3, Grenzen/Korrelation, asynchrone Antworten, Revisionsbeobachtung/Reconnect | Echter registrierter positiver/negativer Peer-Test; weitere Requests in Folgephasen |
+| UI | App/AgentConnection, LocalSetupStore/View, PlanEditorStore/View, FoundationView/Settings, PreviewData; Agent/AgentRuntimeStore und echte Menüleiste; DE/EN | Zeitplan/Pausen/Health/Einstellungen DE/EN verdrahtet; Restore-UI und manueller Design-/A11y-Audit offen |
 | System | UUID-Monitore, DiskArbitration-Schutz, Network/Energie/Wake, SleepAssertion | Live-Berechtigungsnachweise und gebündelte UI-/A11y-/Performance-Abnahme |
 
 ## Sicherheitsverträge, die beim Verbinden erhalten bleiben müssen
@@ -50,14 +52,19 @@ Alte Phasen-/Batch-Nummern in Kommentaren und Protokollen sind historische Refer
 
 - MacKopiaKit/Tests/FoundationTests/ManualBackupIntegrationTests.swift: echtes Temp-Ziel, zwei Quellen,
   Historie, Backup/Restore/Abbruch; VerifyIntegrationCheck ergänzt Prüfungen und echte fällige Full-Wartung.
-- Automatic*Tests: simulierte Zeit/Ereignisse/Steuerung und serieller Prüf-Cleanup.
+- Automatic*Tests und DailyRuntimeTests: virtuelle Zeit/Ereignisse, Recovery, serielle Prüf-/Wartungsnacharbeit,
+  Abbruch und Queue-Sperren. DailyServiceTests: Dienst-Neustart, persistente Pausen/Optionen/Fehler und Monitor-Recovery.
+- BackupNotificationPolicyTests: Tageslimit, Uhr-Rückstellung, einmaliger erster Erfolg, stille Bedingungswartezeit.
+  MaintenanceHistoryTests: Reopen, getrennte Ziel-Evidenz und kein Überschreiben über doppelte IDs.
+- VolumeEjectionSafetyTests: tatsächlicher Volume-Mountpoint statt Ziel-Unterordner; falsche UUID und nicht abnehmbare Volumes werden vor nativen Schreibaktionen abgewiesen.
 - AgentSigningIdentityTests.swift: echte temporäre Ad-hoc-Bundles, Manipulation/gleichnamiger fremder Code,
   Layout und laufender Eigenvergleich; keine permanente Dienstregistrierung.
 - Tests/BundleLayoutTests.swift: gebautes Produkt, App-/Agent-/Kopia-Signaturen, Runtime und Plattformmetadaten.
 - KopiaContractTests + Fixtures/kopia-0.23.1: bereinigte echte Kopia-Verträge.
 - Scripts/tests: Download-Isolation, Architekturprüfung und Probe-Sicherheit; lange Scripts/spike-* nur bei Bedarf.
 - LocalServiceIntegrationTests: echter temporärer Service-Lifecycle einschließlich Create/Connect, zusätzlichem
-  Plan/Editor, Run, bytegleichem Restore, Reopen und Secret-Negativscan. LocalBackupServiceTests prüfen
+  Plan/Editor, manuellem und automatisch terminierten Run, 10-Prozent-Verify, Test-Restore, explizitem Verify,
+  bytegleichem Restore, Reopen und Secret-Negativscan. LocalBackupServiceTests prüfen
   Safe Mode/Recovery, stale Volume-Auswahl und Cancellation; LocalServiceTransportTests echten nativen XPC-Peer.
 - SchedulerTests.delayedTimerTaskRetainsTheOriginalMonotonicDeadline: Task-Start verzögert die Deadline nicht.
 - Config/kopia-version.json bleibt auf 0.23.1 gepinnt. Historischer amd64-Hash ist keine Supportzusage;
@@ -67,8 +74,10 @@ Alte Phasen-/Batch-Nummern in Kommentaren und Protokollen sind historische Refer
 
 - Lokaler manueller Nutzerworkflow ist verdrahtet und temporär integriert geprüft; installierte
   SMAppService-/Keychain-/FDA-Abnahme konnte ohne Computer-Use-Freigabe nicht durchgeführt werden.
-- Neue Pläne haben nur manuelle Trigger; Editor: Name, Aktivierung, Quellen, Aufbewahrung. Automatik und
-  weitere Optionen folgen in Phase 2, vollständige Restore-Oberfläche in Phase 3.
+- Neue Pläne sind bis zur bewussten Terminwahl manuell. Editor: Intervall/täglich/Mount, Netzteil/Nachholen,
+  optionales Auswerfen; komplexe/Wochentagstermine werden unverändert erhalten. Vollständige Restore-UI folgt in Phase 3.
+- Native Mitteilungszustellung und echtes Unmount-/Eject-Verhalten brauchen die separate Live-/Hardware-Abnahme.
+  Keine Aussage über bereits durchgeführte Screenshots, VoiceOver oder registrierten Dienstbetrieb.
 - FDA-Probe verlangt nichtleere reguläre Safari-Bookmarks ≤1 MiB. Fehlende/übergroße Probe blockiert
   konservativ; der Mail-Leseversuch allein bestätigt den Kopia-Kindprozess nicht.
 - Login-Keychain-ACL bei Ad-hoc-Updates ist unbestätigt; keine Entitlement-/Team-/Datei-Ausnahme.
@@ -83,6 +92,6 @@ Alte Phasen-/Batch-Nummern in Kommentaren und Protokollen sind historische Refer
 Aktuelle Verdrahtung und Einstiegspunkte hier ersetzen, nicht neue Tagesprotokolle anhängen.
 Nachweise mit Codezustand/Toolchain und nächster ausführbarer Auftrag stehen kompakt in STATUS.md.
 Nur geänderte normative Verträge und Architekturentscheidungen in PROJEKT.md aktualisieren.
-Aktueller Live-/Prüfstand: STATUS.md; Einstiegsevidenz: [Phase-1-Einstieg](history/STATUS-Phase1-Einstieg-2026-10-25.md).
+Aktueller Live-/Prüfstand: STATUS.md; Phase-1-Abschluss: [Archiv](history/STATUS-Phase1-Abschluss-2026-10-25.md). Einstiegsevidenz: [Phase-1-Einstieg](history/STATUS-Phase1-Einstieg-2026-10-25.md).
 Archiv nur bei einer konkreten Frage lesen: [historischer Status](history/STATUS-2026-10-25.md),
 [abgelöster Plan](history/PLAN-bis-2026-10-25.md).

@@ -1,11 +1,10 @@
-import BackupDomain
 import Foundation
 
-package enum BackupPauseOption: Sendable {
+public enum BackupPauseOption: Sendable {
     case oneHour, untilTomorrowMorning, indefinite
 
     /// Calendar math preserves 08:00 across 23/25-hour days; the chosen date then stays absolute.
-    package func deadline(after date: Date, calendar: Calendar = .current) throws -> Date? {
+    public func deadline(after date: Date, calendar: Calendar = .current) throws -> Date? {
         guard date.timeIntervalSinceReferenceDate.isFinite, date >= .distantPast, date <= .distantFuture else {
             throw DomainValidationError.invalidPlan
         }
