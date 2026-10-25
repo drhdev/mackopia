@@ -10,11 +10,12 @@ public struct LocalServiceState: Codable, Sendable {
     public let revision: UUID
     public let plans: [PlanRuntimeState]
     public let globalPause: BackupPauseState?
+    public let restore: RestoreState?
 
     public init(
         configuration: BackupConfiguration?, runs: [JobRun] = [], activePlanID: UUID? = nil,
         progress: BackupProgress? = nil, issue: LocalServiceIssue? = nil, revision: UUID = UUID(),
-        plans: [PlanRuntimeState] = [], globalPause: BackupPauseState? = nil
+        plans: [PlanRuntimeState] = [], globalPause: BackupPauseState? = nil, restore: RestoreState? = nil
     ) {
         self.configuration = configuration
         self.runs = Array(runs.prefix(50))
@@ -22,7 +23,7 @@ public struct LocalServiceState: Codable, Sendable {
         self.progress = progress
         self.issue = issue
         self.revision = revision
-        self.plans = plans; self.globalPause = globalPause
+        self.plans = plans; self.globalPause = globalPause; self.restore = restore
     }
 }
 

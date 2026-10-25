@@ -154,7 +154,7 @@ extension LocalBackupService {
     }
 
     public func restartAutomation() async throws {
-        guard !stopped, !mutating, configuration != nil else { throw LocalServiceIssue.unavailable }
+        guard !stopped, !mutating, restoreTask == nil, configuration != nil else { throw LocalServiceIssue.unavailable }
         guard active == nil else { throw LocalServiceIssue.busy }
         mutating = true
         defer { mutating = false; changed() }
@@ -164,19 +164,19 @@ extension LocalBackupService {
     }
 
     public func verify(_ planID: UUID) async throws {
-        guard !stopped, !mutating, let runtime else { throw LocalServiceIssue.unavailable }
+        guard !stopped, !mutating, restoreTask == nil, let runtime else { throw LocalServiceIssue.unavailable }
         try await runtime.requestCheck(planID)
         changed()
     }
 
     public func pause(planID: UUID? = nil, until: Date? = nil) async throws {
-        guard !stopped, !mutating, let runtime else { throw LocalServiceIssue.unavailable }
+        guard !stopped, !mutating, restoreTask == nil, let runtime else { throw LocalServiceIssue.unavailable }
         try await runtime.pause(planID: planID, until: until)
         changed()
     }
 
     public func resume(planID: UUID? = nil) async throws {
-        guard !stopped, !mutating, let runtime else { throw LocalServiceIssue.unavailable }
+        guard !stopped, !mutating, restoreTask == nil, let runtime else { throw LocalServiceIssue.unavailable }
         try await runtime.resume(planID: planID)
         changed()
     }

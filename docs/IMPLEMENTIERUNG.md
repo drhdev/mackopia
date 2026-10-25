@@ -21,9 +21,9 @@ Alte Phasen-/Batch-Nummern in Kommentaren und Protokollen sind historische Refer
 
 | Bereich | Implementiert / relevante Einstiegsstellen | Noch zu verbinden |
 |---|---|---|
-| Domain | BackupDomain: validierte Quellen/Ziele/Pläne, UUID-Identität, Policies, Lauf-/Prüfergebnisse | Version-3-Requests tragen validierte Domain-Auswahl einschließlich Volume-UUID |
+| Domain | BackupDomain: validierte Quellen/Ziele/Pläne, UUID-Identität, Policies, Lauf-/Prüfergebnisse | Version-4-Requests tragen validierte Domain-Auswahl einschließlich Volume-UUID |
 | CLI | KopiaCLI: isolierte Prozesse, Whitelist-Umgebung, Timeout/Cancel/Reaping, begrenzte Pipes, Bootstrap/Binding, Verify, Restore-Stichprobe, Wartung lesen/ausführen | Lokaler Bootstrap/Backup im Dienst verdrahtet; Remote-Backends folgen |
-| Server | KopiaServer: loopback TLS, Zertifikatspin, Auth/CSRF, REST, Shutdown/Abbruch | Manueller Dienst-Lifecycle verdrahtet; Restore-Browser an UI folgt |
+| Server | KopiaServer: loopback TLS, Zertifikatspin, Auth/CSRF, REST, Shutdown/Abbruch | KopiaRestoreServing/ServerRestore: Manifest-/Namensrestore, Task-Zähler/Abbruch und Nutzer-Pin/Beschreibung verdrahtet |
 | Konfiguration | Persistence/ConfigStore: atomare Konfiguration, Live-Reload-Grundlage | Dienstbesitz, validierte Mutationen und explizite Recovery über XPC verdrahtet |
 | Historie | Persistence/HistoryStore + VerificationHistory: dauerhafte Läufe und artgetrennte Prüfnachweise | Läufe/Verify/Test-Restore plus append-only MaintenanceHistory; artgetrennte Evidenz über XPC/UI |
 | Secrets | Secrets/AgentKeychainStore → KeychainStore(): Login-Keychain, SecItem, Standard-App-ACL, LAContext ohne UI; alter Team-Adapter nur Vertragsbestand | Echte Agent-Keychain-/Update-Abnahme offen; kein Datei-Fallback |
@@ -32,8 +32,9 @@ Alte Phasen-/Batch-Nummern in Kommentaren und Protokollen sind historische Refer
 | Automatik | AutomaticBackupRuntime/Controls/State, Scheduler, Monitore, Retry/Pausen/Recovery/Historienabgleich | Als alleiniger Queue-/Engine-Besitzer verdrahtet; Pausen/Termine/Recovery und Live-Neustart über XPC/UI |
 | Vertrauen | Health, Plausibilität/Pinning, SnapshotVerificationEngine, AutomaticSnapshotVerification, AutomaticTestRestore | PlanRuntimeState/PlanRuntimeView zeigen Health/Folgeaktionen und dauerhafte Prüfnachweise; AgentNotifications |
 | Wartung | MaintenanceCoordinator, FilesystemMaintenanceInspection, KopiaMaintenanceReader/Runner | Frische Owner-/Terminprüfung, automatische serielle Nacharbeit und dauerhafte Ziel-Evidenz verdrahtet |
-| XPC | AgentSigningIdentity, AgentServiceClient/Server, AgentWirePacket/Request, AgentServiceRegistration; Version 3, Grenzen/Korrelation, asynchrone Antworten, Revisionsbeobachtung/Reconnect | Echter registrierter positiver/negativer Peer-Test; weitere Requests in Folgephasen |
-| UI | App/AgentConnection, LocalSetupStore/View, PlanEditorStore/View, FoundationView/Settings, PreviewData; Agent/AgentRuntimeStore und echte Menüleiste; DE/EN | Zeitplan/Pausen/Health/Einstellungen DE/EN verdrahtet; Restore-UI und manueller Design-/A11y-Audit offen |
+| XPC | AgentSigningIdentity, AgentServiceClient/Server, AgentWirePacket/Request, AgentServiceRegistration; Version 4, Grenzen/Korrelation, asynchrone Antworten, Revisionsbeobachtung/Reconnect | Echter registrierter positiver/negativer Peer-Test; weitere Requests in Folgephasen |
+| UI | App/AgentConnection, LocalSetupStore/View, PlanEditorStore/View, FoundationView/Settings, PreviewData; Agent/AgentRuntimeStore und echte Menüleiste; DE/EN | RestoreStore/View/Sheet, SnapshotMetadataSheet, RestorePreviewData und RecoveryKit DE/EN verdrahtet; Live-Design-/A11y-/Druckabnahme offen |
+| Restore | LocalServiceRestore/Utilities, RestoreBrowser/Destination, RestoreState/SearchMatch | Gemeinsame Gate-/Runtime-Steuerung, Ziel-/Ausgabe-UUIDs, Snapshot-Abstammung, Abbruch/Fortschritt und Vorschau-Cleanup; kein Originalquellenzugriff |
 | System | UUID-Monitore, DiskArbitration-Schutz, Network/Energie/Wake, SleepAssertion | Live-Berechtigungsnachweise und gebündelte UI-/A11y-/Performance-Abnahme |
 
 ## Sicherheitsverträge, die beim Verbinden erhalten bleiben müssen
@@ -47,6 +48,19 @@ Alte Phasen-/Batch-Nummern in Kommentaren und Protokollen sind historische Refer
 - Quellen ohne ausreichenden FDA-/TCC-Nachweis nicht freigeben. Andere unabhängige Implementierung darf weitergehen.
 - Restore überschreibt nie still; Wartung behält Kopias Sicherheitsdefaults. Keine unbestätigten destruktiven Kommandos.
 - Fortschritt höchstens etwa viermal pro Sekunde; Ereignisquellen statt unnötigem Polling.
+
+## Restore-/Recovery-Pfad
+
+- AgentProtocol Version 4 trägt Snapshot-ID/Namenskomponenten; der Client kann keine rohen Kopia-Objekt-IDs wählen.
+- LocalServiceRestore reserviert Automatiksteuerung/Gate bis Server-Shutdown/Reaping; liest frische Konfiguration,
+  prüft Binary/isoliertes Binding/Keychain und schützt Speicherziel plus Ausgabevolume. Keine Originalquelle nötig.
+- RestoreBrowser löst jede Auswahl aus frischen Manifesten/Verzeichnissen auf und übernimmt gespeicherte Namensbytes.
+  NFC/NFD-Mehrdeutigkeit und Symlink-Abstieg blockieren. Fremde Benutzer-/Rechneridentitäten bleiben vollständig.
+- Ausgabe: neuer privater UUID-Ordner unter gewähltem Elternordner; kein registriertes Speicherziel als Ausgabe.
+  Overwrite-Schalter aus, Restored-SUCCESS nur ohne Skipped Files/Ignored Errors; Teilresultate bei Abbruch erhalten.
+- Quick Look: Dateirestore bis 50 MB unter privater Cache-Sitzung; explizites Clear/Schließen und Shutdown löschen sie.
+- App/RestoreStore besitzt Auswahl/Filter/Sortierung/Suche/Dialog; Views bleiben bei Systemkomponenten.
+  RecoveryKit nutzt NSPrintOperation einschließlich PDF und enthält keine Passwörter; Angebot nach Einrichtung.
 
 ## Repräsentative Tests und Werkzeuge
 
@@ -67,15 +81,26 @@ Alte Phasen-/Batch-Nummern in Kommentaren und Protokollen sind historische Refer
   bytegleichem Restore, Reopen und Secret-Negativscan. LocalBackupServiceTests prüfen
   Safe Mode/Recovery, stale Volume-Auswahl und Cancellation; LocalServiceTransportTests echten nativen XPC-Peer.
 - SchedulerTests.delayedTimerTaskRetainsTheOriginalMonotonicDeadline: Task-Start verzögert die Deadline nicht.
+- RestoreServiceIntegrationTests: fremder Benutzer/Rechner, entfernte Originalquelle, Browser/Suche,
+  SHA-256-Restore samt leerer Datei/Symlink/POSIX/mtime, bestehendes Ziel abgewiesen, Preview-Cache gelöscht,
+  Abbruch und erneute Admission, Beschreibung/Pin/Unpin ohne Verlust von Sicherheits-Pins, Secret-Negativscan.
+- RestoreBrowserTests/RestoreSelectionTests: Ancestry/Traversal/UUID/Symlink, Unicode-Namensbytes und
+  Mehrdeutigkeit, begrenzte zyklische Suche/Cancellation und private eindeutige Ausgabeverzeichnisse.
 - Config/kopia-version.json bleibt auf 0.23.1 gepinnt. Historischer amd64-Hash ist keine Supportzusage;
   der aktuelle Fetch-/Embed-Pfad verwendet ausschließlich arm64, ohne lipo-Universal-Erzeugung.
 
 ## Bekannte technische Grenzen
 
+- Restore-Browser: maximal 128 Quellen/1.000 Snapshots/8 MiB, maximal 2.000 Einträge pro Verzeichnis;
+  größere Bestände werden abgewiesen. Suche: 256 Verzeichnisse/10.000 Einträge/500 Treffer/Tiefe 64, sichtbare Grenze.
+- Kein Überschreiben/Originalort-Restore freigegeben; neuer privater Ordner bleibt der sichere Standard.
+- Live-Restore-/Quick-Look-Durchgang, Drucklayout/PDF und DE/EN-/A11y-Abnahme ausstehend.
+- Nach hartem Dienstabbruch können private Quick-Look-Cache-Reste bleiben; regulärer Close/Shutdown löscht die Sitzung.
+
 - Lokaler manueller Nutzerworkflow ist verdrahtet und temporär integriert geprüft; installierte
   SMAppService-/Keychain-/FDA-Abnahme konnte ohne Computer-Use-Freigabe nicht durchgeführt werden.
 - Neue Pläne sind bis zur bewussten Terminwahl manuell. Editor: Intervall/täglich/Mount, Netzteil/Nachholen,
-  optionales Auswerfen; komplexe/Wochentagstermine werden unverändert erhalten. Vollständige Restore-UI folgt in Phase 3.
+  optionales Auswerfen; komplexe/Wochentagstermine werden unverändert erhalten. Restore-UI einschließlich Quick Look und Recovery-Kit ist verdrahtet.
 - Native Mitteilungszustellung und echtes Unmount-/Eject-Verhalten brauchen die separate Live-/Hardware-Abnahme.
   Keine Aussage über bereits durchgeführte Screenshots, VoiceOver oder registrierten Dienstbetrieb.
 - FDA-Probe verlangt nichtleere reguläre Safari-Bookmarks ≤1 MiB. Fehlende/übergroße Probe blockiert

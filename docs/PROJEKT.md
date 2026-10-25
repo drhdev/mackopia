@@ -1128,7 +1128,9 @@ die Health-Abfrage selbst startet weiterhin keine Prozesse oder Secret-/Zugriffs
    Deutlicher Hinweis: **„Ohne dieses Passwort sind deine Backups unwiederbringlich verloren.“**
 4. **Wiederherstellungs-Kit**: PDF (via `ImageRenderer`/`NSPrintOperation`) mit Repository-Typ, Pfad/URL, Benutzer@Host-Identität,
    Kopia-Version, Datum, optional dem Passwort sowie einer Kurzanleitung, wie man **ohne MacKopia** mit der Kopia-CLI wiederherstellt.
-   Angeboten nach dem Anlegen, jederzeit erneut abrufbar.
+   Angeboten nach dem Anlegen, jederzeit im Restore-Bereich erneut abrufbar. Der integrierte Phase-3-Pfad
+   verwendet den nativen Druckdialog einschließlich „Als PDF sichern“, ohne Passwort; es gibt keine Secret-Rückgabe.
+   Drucklayout/PDF-Ausgabe bleiben Teil der manuellen UI-Abnahme.
 5. **XPC-Härtung**: Swift-XPC-API (`XPCListener`/`XPCSession`) mit Peer-Requirement aus exakter
    Signing-ID und CodeDirectory-Hash des jeweiligen Partners im lokal signierten App-Bundle.
    Eigene laufende Signatur, Bundle-Layout und äußeres Bundle-Siegel werden vor Verbindungsaufbau geprüft.
@@ -1451,11 +1453,23 @@ Policy-Übertragung; der Aufrufer muss Quellidentität und Aktualität weiterhin
   in der Mitte, `.truncationMode(.middle)`), Buttons Pausieren/Stoppen.
 - **Wiederherstellen**: Links Filter (Plan/Quelle/Rechner), Mitte `Table` der Snapshots (Datum, Größe, Dateien, Grund der
   Aufbewahrung, Pin, Beschreibung), darunter/rechts Browser als `List` mit `DisclosureGroup`/Spaltenansicht.
-  Leertaste = Quick Look (Datei über `/api/v1/objects/{oid}` in `~/Library/Caches/MacKopia/QuickLook/` laden, beim Schließen löschen).
-  „Wiederherstellen…“ → Sheet: Ziel (Standard: `~/Downloads/MacKopia-Wiederherstellung <Datum>/`), Optionen
-  [ ] Vorhandene Dateien überschreiben (Standard aus), [x] Berechtigungen/Zeitstempel übernehmen, Zusammenfassung, Start.
-  „An ursprünglichem Ort wiederherstellen“ nur mit expliziter Bestätigung und Standard „vorhandene überspringen“.
-  Suche über Dateinamen im ausgewählten Snapshot (lazy, mit Abbruch).
+  Leertaste = Quick Look (Datei über denselben abgesicherten Manifest-/Namensrestore in
+  `~/Library/Caches/MacKopia/QuickLook/` laden, beim Schließen löschen).
+  „Wiederherstellen…“ → Sheet: Ziel-Elternordner (Standard: `~/Downloads/`), Auswahl/Metadatenhinweis und Start.
+  Phase 3 erstellt darunter atomar einen privaten Ordner `MacKopia-<UUID>/` (0700), darin die ausgewählte Datei,
+  den Ordner oder `Restore/` für den gesamten Snapshot. Alle Kopia-Overwrite-Schalter bleiben aus;
+  übersprungene Dateien oder ignorierte Fehler ergeben keinen Erfolg. Teilresultate bleiben bei Abbruch erhalten.
+  Überschreiben und „An ursprünglichem Ort wiederherstellen“ werden nicht angeboten; solche erweiterten
+  Varianten benötigen vor Freigabe eine explizite Bestätigung und nachgewiesenen Konflikt-/Symlinkschutz.
+  Berechtigungen/Zeitstempel werden übernommen; die UI nennt die bekannten xattr-/ACL-/Finder-Metadatenlimits.
+  Suche über Dateinamen im ausgewählten Snapshot (lazy, mit Abbruch): höchstens 256 Verzeichnisse,
+  10.000 Einträge, 500 Treffer und Tiefe 64, mit sichtbarem Hinweis bei Begrenzung.
+  Browserseiten enthalten höchstens 2.000 Einträge; der Katalog höchstens 128 Quellen/1.000 Snapshots/8 MiB.
+  Größere Seiten/Kataloge werden ausdrücklich abgewiesen statt als vollständig leer oder vollständig geladen dargestellt.
+  Der Snapshot-Selektor behält die vollständige fremde Benutzer-/Rechneridentität; lokale Originalquellen sind nicht nötig.
+  Quick Look stellt ausschließlich Dateien bis 50 MB unter einem privaten Cache-Sitzungsordner wieder her und
+  löscht die eigene Sitzung beim Schließen bzw. Dienst-Shutdown. Ein harter Prozessabbruch kann Cache-Reste hinterlassen.
+  Beschreibung/Nutzer-Pin sind bearbeitbar; Sicherheits-Pins werden nie entfernt, geänderte Manifest-IDs frisch geladen.
 - **Aktivität**: `Table` aller `JobRun`s (Plan, Trigger, Start, Dauer, Ergebnis, Datenmenge), Detail mit Fehlerliste
   (Datei + Grund) und „Kopia-Log anzeigen“.
 
@@ -1489,7 +1503,7 @@ Byte-/Datumsformatierung ausschließlich mit `ByteCountFormatStyle`, `Date.Forma
 
 ## 12. App ↔ Agent-Protokoll
 
-**Verdrahteter Phase-1/2-Vertrag (Version 3):** `AgentServiceClient/Server` transportieren begrenzte
+**Verdrahteter Phase-1/2/3-Vertrag (Version 4):** `AgentServiceClient/Server` transportieren begrenzte
 JSON-Daten in einem Codable-XPC-Umschlag. Vor der Domain-Dekodierung gelten 1 MiB für Requests und
 16 MiB für Antworten. Version/UUID korrelieren jede Antwort; Secrets sind nur im Setup-Request zulässig.
 Jede authentifizierte Sitzung nimmt genau einen Request an und sendet die asynchrone Antwort über
@@ -1498,10 +1512,18 @@ der anonyme Testendpoint existiert ausschließlich im Testtarget.
 
 Implementiert: Zustand, lokales Erzeugen/Verbinden, neuer Plan am vorhandenen Ziel, validiertes Plan-Update,
 explizite Konfigurations-Recovery, manueller Start/Stopp, Plan-/globale Pause mit absoluter Frist,
-Fortsetzen, explizites Verify, Mitteilungseinstellung und Automatik-Neustart. Zustände enthalten
+Fortsetzen, explizites Verify, Mitteilungseinstellung und Automatik-Neustart; außerdem Snapshot-Katalog/Browser,
+begrenzte Suche, Beschreibung/Nutzer-Pin, Restore-Admission/Abbruch und Quick-Look-Cache-Lifecycle.
+Snapshot-ID und validierte Namenskomponenten ersetzen rohe Objekt-IDs vom Client. Der Dienst löst jede Auswahl
+über frische Manifeste/Verzeichnisabstammung auf; Kopia erhält exakte gespeicherte Unicode-Namensbytes.
+Restore reserviert dieselbe Repo-Sperre und Automatik-Steuersperre bis zum vollständigen Server-Cleanup,
+überwacht Ziel und Ausgabevolume und benötigt keinen Zugriff auf die Originalquellen. Er bleibt auch bei
+angehaltener Automatik möglich, sofern kein konkurrierender Zugriff die gemeinsame Sperre besitzt.
+Zustände enthalten
 Konfiguration, maximal 50 jüngste Läufe, aktive Plan-ID, Fortschritt und feste Fehlercodes sowie
-planbezogene Termine/Pausen/Health und artgetrennte Verify-/Test-Restore-/Wartungsnachweise.
-Ungültige Daten und nicht endliche Fristen werden mit festem Fehler abgewiesen; Version 2 wird nicht still weiterverwendet. `state(after:)` wartet ereignisgesteuert
+planbezogene Termine/Pausen/Health und artgetrennte Verify-/Test-Restore-/Wartungsnachweise sowie eine
+begrenzte Restore-Projektion (Katalog/Seite/Suchtreffer oder laufende Operation mit UUID, Bytes, Dateien und Ergebnis).
+Ungültige Daten und nicht endliche Fristen werden mit festem Fehler abgewiesen; ältere Versionen werden nicht still weiterverwendet. `state(after:)` wartet ereignisgesteuert
 auf eine neue Revision (maximal 25 s / acht Beobachter); so transportiert eine neue Momentaufnahme
 State-/Progress-/Run-Ereignisse ohne Idle-Polling. Clientfrist 90 s, Cancellation trennt die Sitzung und
 beendet den zugehörigen Request; ein bereits angenommener Lauf gehört dem Dienst bis zum expliziten Stopp.
@@ -1636,7 +1658,7 @@ Fortschritt begrenzen, Cancellation/Cleanup und SleepAssertions konsistent halte
 ein temporärer Gesamtdurchstich; volle Package-Suite und betroffene Xcode-Prüfung einmal am Blockende.
 **Einstiegsstellen:** §6.6, §7.3–§7.7, §9, §11.3–§11.4, §12.
 
-### Phase 3 – Vollständige Wiederherstellung und Recovery
+### Phase 3 – Vollständige Wiederherstellung und Recovery (integriert, Live-Abnahme offen)
 
 **Ergebnis:** Ein Backup lässt sich in der App finden, prüfen und ohne stilles Überschreiben wiederherstellen.
 
@@ -1840,6 +1862,9 @@ Neuere ausdrücklich ersetzende Entscheidungen haben Vorrang; alte Phasen-/Platt
 | 2026-10-25 | Phase 2: gemeinsame produktive Automatik statt separater manueller Engine | §7.5/§12: LocalBackupService besitzt die einzige Runtime; manuelle und automatische Läufe, persistente Pausen/Queue-Recovery, Health und serielle Nacharbeit über denselben Schutzpfad. XPC Version 3; Steuer-UUID-Sperren verhindern Folgeläufe während Abbruchbereinigung. |
 | 2026-10-25 | Additive Mitteilungseinstellung und wartungsbezogene Evidenz | §7.2/§7.6/§11.4: ältere Konfigurationen lesen notificationsEnabled=false; Agent fordert Berechtigung nur nach expliziter Aktivierung an. Dauerhafte Wartungsergebnisse in eigener SQLite-Tabelle, Restore-Fehler kritisch. Routineerfolge bleiben still; Problemlimit pro Plan 24 Stunden. |
 | 2026-10-25 | Optionales sicheres Auswerfen nach serieller Backup-Nacharbeit | §7.4/§7.6: ausschließlich lokale abnehmbare UUID-gebundene Volumes, reguläre DiskArbitration-Optionen, kein Force. Gemeinsame Repo-Sperre bis zur nativen Rückmeldung. Nur Ablehnung falscher/nicht abnehmbarer Volumes automatisiert geprüft; Hardware-Audit separat. |
+| 2026-10-25 | Phase 3: Restore in neue private Ordner, dienstbesessene Operationen und XPC Version 4 | §11.2/§12: UI-Auswahl über Snapshot-ID/Namenskomponenten, frische Manifeste/Abstammung, gemeinsame Repo-/Automatik-Sperren und Ziel-/Ausgabe-UUID-Schutz. Kein Originalquellenzugriff; keine Überschreib-/Originalort-Option ohne zusätzlichen Konfliktnachweis. Temp-Integration bestätigt Inhalte, Metadaten, Konfliktablehnung, Abbruch und fremde Identitäten. |
+| 2026-10-25 | Kopia 0.23.1: Restore mit Manifest/Namenspfad und exakten Unicode-Bytes | Rohe Dateiobjekte verlieren Namen/Metadaten; Go unterscheidet NFC/NFD, Swift-Gleichheit nicht. Dienst verwendet gespeicherte Namen und verweigert mehrdeutige äquivalente Einträge. Kopia-Edit ersetzt Manifest-ID; Nutzer-Pin ist getrennt von Sicherheits-Pins. |
+| 2026-10-25 | Begrenzter lazy Restore-Browser, Quick Look und Recovery-Kit ohne Passwort | §8.4/§11.2: explizite Suchgrenzen; Cache-Sitzung privat und beim Schließen bereinigt, Crashreste als offene Grenze dokumentiert. Kit über nativen Druck-/PDF-Dialog ohne Secret-Rückgabe. Manuelle Druck-/DE-EN-/A11y-Abnahme separat. |
 
 ---
 

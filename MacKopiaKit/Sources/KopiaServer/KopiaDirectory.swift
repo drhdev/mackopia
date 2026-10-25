@@ -1,9 +1,9 @@
 import Foundation
 
-struct KopiaDirectory: Decodable, Sendable, CustomReflectable {
-    let stream: String?
-    let entries: [KopiaDirectoryEntry]?
-    let summary: KopiaDirectorySummary?
+package struct KopiaDirectory: Decodable, Sendable, CustomReflectable {
+    package let stream: String?
+    package let entries: [KopiaDirectoryEntry]?
+    package let summary: KopiaDirectorySummary?
 
-    var customMirror: Mirror { Mirror(self, children: ["directory": "<private>"]) }
+    package var customMirror: Mirror { Mirror(self, children: ["directory": "<private>"]) }
 }

@@ -3,6 +3,7 @@ import Foundation
 /// Only validated, typed routes may receive the child process credentials.
 enum KopiaServerRoute: Sendable {
     case root, repositoryStatus, sources, tasks
+    case restore, cancelTask(String)
     case editSnapshots
     case task(String)
     case snapshots(KopiaSnapshotSource), snapshotManifests(KopiaSnapshotSource)
@@ -18,6 +19,10 @@ enum KopiaServerRoute: Sendable {
         case .repositoryStatus: path = "api/v1/repo/status"
         case .sources: path = "api/v1/sources"
         case .tasks: path = "api/v1/tasks"
+        case .restore: path = "api/v1/restore"
+        case .cancelTask(let id):
+            try Self.validateSegment(id, limit: 128)
+            path = "api/v1/tasks/" + id + "/cancel"
         case .editSnapshots: path = "api/v1/snapshots/edit"
         case .task(let id):
             try Self.validateSegment(id, limit: 128)

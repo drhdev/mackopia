@@ -11,8 +11,9 @@ struct MacKopiaApp: App {
                         !connection.canConfigure)
                     Button("Jetzt sichern") { connection.runSelected() }.keyboardShortcut("b").disabled(
                         !connection.canRun)
+                    Button("Wiederherstellen…") { connection.showRestore = true }.keyboardShortcut("r")
                     Button("Stoppen") { connection.stop() }.keyboardShortcut(".").disabled(
-                        connection.state?.activePlanID == nil)
+                        connection.state?.activePlanID == nil && connection.state?.restore?.phase != .running)
                 }
             }
         Settings { FoundationSettingsView().environment(connection) }

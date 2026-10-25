@@ -32,6 +32,9 @@ public actor LocalBackupService {
     var planIssues: [UUID: LocalServiceIssue] = [:]
     var issue: LocalServiceIssue?
     var progress: BackupProgress?
+    var restoreState: RestoreState?
+    var restoreTask: Task<Void, Never>?
+    var previewDirectory: URL?
     var revision = UUID()
     var observers: [UUID: AsyncStream<Void>.Continuation] = [:]
 
@@ -108,7 +111,7 @@ public actor LocalBackupService {
         return LocalServiceState(
             configuration: snapshot.0, runs: runs,
             activePlanID: snapshot.1, progress: snapshot.2, issue: snapshot.3, revision: snapshot.4, plans: plans,
-            globalPause: pause)
+            globalPause: pause, restore: restoreState)
     }
 
     func performSetup(
@@ -238,6 +241,9 @@ public actor LocalBackupService {
 
     public func shutdown() async {
         stopped = true
+        restoreTask?.cancel()
+        await restoreTask?.value
+        try? clearRestorePreview()
         await runtime?.shutdown()
         while mutating {
             let id = UUID()
@@ -263,7 +269,7 @@ public actor LocalBackupService {
     func availableForMutation() throws {
         guard !stopped else { throw LocalServiceIssue.unavailable }
         guard configuration != nil else { throw LocalServiceIssue.safeMode }
-        guard !mutating else { throw LocalServiceIssue.busy }
+        guard !mutating, restoreTask == nil else { throw LocalServiceIssue.busy }
     }
     func received(_ value: BackupProgress) { progress = value; changed() }
     func activity(_ id: UUID?) {

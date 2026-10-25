@@ -1,7 +1,7 @@
 import Foundation
 
 /// Cookies and credentials stay private; complete policies use a bounded, redacted document.
-package actor KopiaServerClient: KopiaBackupServing {
+package actor KopiaServerClient: KopiaBackupServing, KopiaRestoreServing {
     private let handshake: KopiaServerHandshake
     private let session: URLSession
     private var csrf: KopiaServerCSRFSession?
@@ -62,7 +62,7 @@ package actor KopiaServerClient: KopiaBackupServing {
         try await get(.tasks)
     }
 
-    func task(id: String) async throws -> KopiaTask {
+    package func task(id: String) async throws -> KopiaTask {
         try await get(.task(id))
     }
 
@@ -162,7 +162,7 @@ package actor KopiaServerClient: KopiaBackupServing {
         _ = try await read(.policy(source), method: "PUT", body: document.encoded())
     }
 
-    func directory(id: String) async throws -> KopiaDirectory {
+    package func directory(id: String) async throws -> KopiaDirectory {
         let directory: KopiaDirectory = try await get(.directory(id))
         guard directory.stream == "kopia:directory" else { throw KopiaServerClientError.response }
         return directory
@@ -175,7 +175,7 @@ package actor KopiaServerClient: KopiaBackupServing {
         }
     }
 
-    private func read(
+    func read(
         _ route: KopiaServerRoute, maximumBytes: Int = 4 * 1024 * 1024,
         method: String? = nil, body: Data? = nil
     ) async throws -> Data {

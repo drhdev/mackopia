@@ -33,6 +33,21 @@ final class AgentAppDelegate: NSObject, NSApplicationDelegate {
                 try await service.start()
                 try await server.start(identity: identity) { command in
                     switch command {
+                    case .editSnapshot(let repo, let snapshot, let description, let pinned):
+                        try await service.editSnapshot(
+                            repositoryID: repo, snapshotID: snapshot, description: description, pinned: pinned)
+                    case .searchRestore(let repo, let snapshot, let query):
+                        try await service.searchRestore(repositoryID: repo, snapshotID: snapshot, query: query)
+                    case .previewRestore(let repo, let snapshot, let components):
+                        try await service.previewRestore(
+                            repositoryID: repo, snapshotID: snapshot, components: components)
+                    case .clearRestorePreview: try await service.clearRestorePreview()
+                    case .browse(let repo, let snapshot, let components):
+                        try await service.browse(repositoryID: repo, snapshotID: snapshot, components: components)
+                    case .restore(let repo, let snapshot, let components, let destination):
+                        try await service.restore(
+                            repositoryID: repo, snapshotID: snapshot, components: components, destination: destination)
+                    case .cancelRestore(let id): try await service.cancelRestore(id)
                     case .state(let revision): return try await service.state(after: revision)
                     case .setup(let name, let destination, let source, let password, let create):
                         try await service.setup(

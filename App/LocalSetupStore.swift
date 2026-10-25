@@ -41,6 +41,11 @@ final class LocalSetupStore {
         connection.send(
             .setup(name: name, destination: destination, source: source, password: password, create: create)
         ) {
+            self.connection.recoveryKitRepositoryID =
+                self.connection.state?.configuration?.repositories.first {
+                    if case .filesystem(let path, _) = $0.kind { return path == destination.path }
+                    return false
+                }?.id
             self.clear(); completed()
         }
     }

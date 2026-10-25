@@ -9,6 +9,7 @@ package struct KopiaSnapshot: Decodable, Sendable, CustomReflectable {
     package let summary: KopiaDirectorySummary?
     package let retention: [String]?
     package let pins: [String]?
+    package let description: String?
 
     package var customMirror: Mirror { Mirror(self, children: ["snapshot": "<private>"]) }
 }

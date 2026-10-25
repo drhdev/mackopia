@@ -2,8 +2,9 @@ import BackupDomain
 import SwiftUI
 
 struct FoundationView: View {
-    enum Route: String, Hashable { case overview, plans, destinations, activity }
+    enum Route: String, Hashable { case overview, plans, destinations, activity, restore }
     @Environment(AgentConnection.self) private var connection
+    @State private var restoreStore: RestoreStore?
     @SceneStorage("navigation") private var savedRoute = Route.overview.rawValue
     private var selection: Binding<Route?> {
         Binding(get: { Route(rawValue: savedRoute) }, set: { savedRoute = ($0 ?? .overview).rawValue })
@@ -16,6 +17,7 @@ struct FoundationView: View {
                 Label("Übersicht", systemImage: "house").tag(Route.overview)
                 Label("Backup-Pläne", systemImage: "list.bullet").tag(Route.plans)
                 Label("Speicherziele", systemImage: "externaldrive").tag(Route.destinations)
+                Label("Wiederherstellen", systemImage: "arrow.counterclockwise").tag(Route.restore)
                 Label("Aktivität", systemImage: "clock").tag(Route.activity)
             }
         } detail: {
@@ -59,6 +61,15 @@ struct FoundationView: View {
                             Button("Fortsetzen") { connection.resume() }
                         }.padding()
                     }
+                    if let repositoryID = connection.recoveryKitRepositoryID {
+                        HStack {
+                            Text("Bewahre eine Wiederherstellungsanleitung getrennt vom Backup auf.")
+                            Button("Wiederherstellungs-Kit…") {
+                                RecoveryKit.printKit(connection: connection, repositoryID: repositoryID)
+                            }
+                            Button("Schließen") { connection.recoveryKitRepositoryID = nil }
+                        }.padding()
+                    }
                     content
                 }
             }
@@ -73,14 +84,20 @@ struct FoundationView: View {
                     Button("Bis morgen um 08:00") { connection.pause(.untilTomorrowMorning) }
                     Button("Unbegrenzt") { connection.pause(.indefinite) }
                     Button("Fortsetzen") { connection.resume() }
-                }.disabled(!connection.connected || connection.busy)
+                }.disabled(!connection.connected || connection.busy || connection.state?.restore?.phase == .running)
                 Button("Stoppen", systemImage: "stop.fill") { connection.stop() }
                     .help("Stoppen").accessibilityLabel(Text("Stoppen")).disabled(
-                        connection.state?.activePlanID == nil || connection.busy)
+                        (connection.state?.activePlanID == nil && connection.state?.restore?.phase != .running)
+                            || connection.busy)
             }
         }
         .frame(minWidth: 800, minHeight: 520)
-        .task { connection.start() }
+        .task {
+            connection.start(); if restoreStore == nil { restoreStore = RestoreStore(connection: connection) }
+        }
+        .onChange(of: connection.showRestore) { _, value in
+            if value { savedRoute = Route.restore.rawValue; connection.showRestore = false }
+        }
         .onChange(of: connection.showActivity) { _, requested in
             if requested { savedRoute = Route.activity.rawValue; connection.showActivity = false }
         }
@@ -99,18 +116,10 @@ struct FoundationView: View {
     }
 
     @ViewBuilder private var content: some View {
-        if savedRoute == Route.activity.rawValue {
-            Table(connection.state?.runs ?? []) {
-                TableColumn("Beginn") { run in Text(run.startedAt, format: .dateTime) }
-                TableColumn("Ergebnis") { run in Text(AgentConnection.outcome(run.outcome)) }
-            }
-            .overlay {
-                if connection.state?.runs.isEmpty ?? true {
-                    ContentUnavailableView(
-                        "Noch keine Sicherungen", systemImage: "clock",
-                        description: Text("Starte dein erstes Backup über „Jetzt sichern“."))
-                }
-            }
+        if savedRoute == Route.restore.rawValue {
+            if let restoreStore { RestoreView().environment(restoreStore) }
+        } else if savedRoute == Route.activity.rawValue {
+            ActivityView()
         } else if savedRoute == Route.destinations.rawValue {
             List(connection.state?.configuration?.repositories ?? []) { repository in
                 LabeledContent(repository.name) {

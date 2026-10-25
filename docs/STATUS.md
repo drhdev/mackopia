@@ -5,9 +5,9 @@ Zuerst AGENTS.md, diesen Status, PROJEKT.md §14 und IMPLEMENTIERUNG.md lesen.
 
 ## Aktuelle Produktphase
 
-**Phase 2 ist im lokalen Dienst integriert und automatisiert geprüft; Live-Systemabnahme bleibt offen.**
-Manuelle und automatische Backups gehören derselben Runtime. Termine, Pausen, Recovery und
-Prüfnachweise sind im Fenster und der Menüleiste angebunden. Nächster Coding-Auftrag: Phase 3.
+**Phase 3 ist im lokalen Dienst und der App integriert und automatisiert geprüft.**
+Backups sind ohne Originalquelle auffindbar und in neue private Ordner wiederherstellbar.
+Live-UI-/Druck-/Systemabnahme bleibt separat offen. Nächster Coding-Auftrag: Phase 4, zuerst S3.
 
 ## In progress
 
@@ -18,71 +18,80 @@ Prüfnachweise sind im Fenster und der Menüleiste angebunden. Nächster Coding-
 
 - macOS 27.x, natives arm64; Xcode 27.1 (27A9275), Swift 6.4 / Sprachmodus 6, SDK 27.
 - Kontoloser Ad-hoc-Vertrieb mit Hardened Runtime; keine neuen Entitlements/Abhängigkeiten/Buildphasen.
-- Keychain ausschließlich im Agent, Standard-App-ACL, keine Team-/Access-Group-Pflicht, kein Dialog im Hintergrund.
+- Keychain ausschließlich im Agent, Standard-App-ACL; keine Team-/Access-Group-Pflicht und kein Hintergrunddialog.
 - FDA verlangt frische Agent- UND Kopia-Leseevidenz; fehlende Safari-Testdatei blockiert konservativ.
-- Neue Pläne bleiben bis zur bewussten Terminwahl manuell. Komplexe bestehende Termine bleiben erhalten.
-- Mitteilungen explizit aktivierbar, Standard aus; erster Erfolg einmal, Probleme höchstens einmal je Plan/24 Stunden.
-- Auswerfen ausschließlich abnehmbare lokale UUID-gebundene Volumes, reguläre DiskArbitration-Optionen, kein Force.
-- Architektur und Entscheidungen: PROJEKT.md §6.6–§7.7, §8–§9, §11–§12, §17.
+- Neue Pläne sind bis zur Terminwahl manuell; Mitteilungen optional, Standard aus; Eject nie mit Force.
+- Restore: neuer privater UUID-Ordner (0700), alle Overwrite-Schalter aus, keine Originalort-/Überschreiboption.
+  Erweiterte Varianten benötigen vor Freigabe einen eigenen Konflikt-/Symlinknachweis und bewusste Bestätigung.
+- Snapshot-/Namensauswahl statt Client-Objekt-IDs; exakte gespeicherte Unicode-Namen an Kopia zurückgeben.
+- Nutzer-Pin getrennt von automatischen Sicherheits-Pins. Kopia-Edit ersetzt Manifest-ID; Katalog neu laden.
+- Recovery-Kit über nativen Druck-/PDF-Dialog ohne Passwort. Quick Look maximal 50 MB, privater Sitzungscache.
+- Normative Architektur und Entscheidungen: PROJEKT.md §6.4, §8.4, §9, §11.2, §12 und §17.
 
 ## Implementiert und verdrahtet
 
-- `LocalBackupService` besitzt genau eine `AutomaticBackupRuntime` mit Queue/Runner/Engine, Zeit-/Ereignis-
-  Scheduler, nativen Monitoren, Retry, persistenten Pausen und Queue-/Historien-Recovery.
-- Setup/Editor sperren Admissions und Entnahme vor suspendierenden Mutationen. Aktive Backups ergeben `busy`.
-  Steuer-UUID-Sperren halten Folgeläufe während Stop-/Pause-/Prüf-Cleanup; Schedulerrevisionen verlieren keine Freigabe.
-- Gemeinsame Gates, Keychain, Volume-UUID-/FDA-Prüfung, SleepAssertion und Cancellation/Shutdown bleiben erhalten.
-- Serielle Nacharbeit: fällige 1-/10-Prozent-Verify-Stufen, Test-Restore, frische Owner-/Terminprüfung und fällige
-  Full-Wartung; append-only Ziel-Wartungsevidenz. Explizites Verify benutzt denselben Drain.
-- `PlanRuntimeState`: nächste Termine, Plan-/globale Pause, Health, getrennte Verify-/Restore-/Wartungsnachweise
-  und feste planbezogene Fehler. Restore-Fehler kritisch, Wartungsfehler warnend; keine Rohdiagnosen/Secrets.
-- XPC Version 3: Pause/Fortsetzen/Verify/Mitteilungen/Automatik-Neustart; Grenzen/Korrelation/Code-Hash-Pinning bleiben.
-  Expliziter Automatik-Neustart joint den alten Besitzer und startet eine frische Beobachtung.
-- Editor: manuell/Intervall/täglich/Mount, Nachholen/Netzteil, optionales Auswerfen. Fenster: Health/Folgeaktionen,
-  Prüfen, Pause/Fortsetzen. Menüleiste: Status, letzter Erfolg, Laufsteuerung und globale Pause. DE/EN, sichere Previews.
-- Agent-Mitteilungen mit getesteter Entscheidungslogik; Berechtigungsdialog nur nach expliziter Aktivierung,
-  UUID-/Datumsledger ohne Secrets, Retry/Details-Aktionen. Previews initialisieren keine reale Mitteilungsanbindung.
-- Branch: `codex/p2-daily-operation`, basiert auf `codex/p1-local-workflow` (offener Vorgänger-PR #2).
+- Phase-1/2-Basis: ein `LocalBackupService` mit einer `AutomaticBackupRuntime`, gemeinsamer Queue/Gate,
+  Keychain, UUID-/FDA-Schutz, Scheduling, Retry/Pausen/Recovery, Health, Verify/Test-Restore/Wartung.
+- `LocalServiceRestore`: Katalog/Browser/Suche, dienstbesessener Restore-Task mit UUID, Fortschritt/Abbruch.
+  Laufsteuerung und Gate bleiben bis Server-Shutdown/Reaping reserviert. Originalquellen werden nicht geprüft.
+  Bei angehaltener Automatik bleibt Restore über dieselbe Repo-Sperre möglich; normale Backups bleiben geschützt.
+- `RestoreBrowser`: vollständige Benutzer-/Rechner-/Quellidentität, frische Manifeste und Verzeichnisabstammung.
+  Mehrdeutige NFC/NFD-Namen, Traversal und Symlink-Abstieg werden abgewiesen; Suchgrenzen sichtbar.
+- `RestoreDestination`: frische UUID/Kapazität, keine Ausgabe in registrierte Speicherziele, privater neuer Ordner.
+  Fehler/Abbruch behalten Teilresultate; SUCCESS mit übersprungenen Dateien/ignorierten Fehlern gilt als Fehlschlag.
+- XPC Version 4: Browse/Search/Edit/Restore/Cancel/Preview/ClearPreview und begrenzte Restore-Projektion.
+  Signing-/Code-Hash-Pinning, Request-/Antwortgrenzen und Secrets-Regeln bleiben erhalten.
+- App: sortierbare Snapshot-Tabelle, Plan-/Quell-/Rechnerfilter, lazy Browser, Dateinamensuche, Auswahl von
+  Snapshot/Ordner/Datei, Ziel-Sheet (Downloads voreingestellt), Abbruch, Finder und Leertaste/Quick Look.
+  Beschreibung/Nutzer-Pin editierbar; ⌘R öffnet Restore, ⌘. stoppt auch Restore. DE/EN, sichere Mock-Previews.
+- Recovery-Kit jederzeit im Restore-Bereich, Angebot nach Einrichtung; Typ/Ziel/Identität/Version/Datum und
+  CLI-Anleitung ohne MacKopia. Keine Passwort-Rückgabe; Druck/PDF noch nicht manuell abgenommen.
+- Branch: `codex/p3-restore-recovery`, Basis `main` bei `adb1914` (Phase-2-Code bereits auf main).
 
 ## Prüfung dieses Codezustands
 
-- Vollständige Package-Suite: **550 Tests grün** (531 Foundation, 19 Contract), echte temporäre Kopia-Integration.
-- Gesamtdurchstich: Create → manueller Lauf → monatliche 10-Prozent-Prüfung/Test-Restore → gespeicherter
-  Intervalltermin/virtuelle Zeit → automatischer Lauf → explizites Verify → bytegleicher Restore → Reopen/Connect.
-  Secret-Negativscan, Pausen/Optionen/Fehler über Neustart, Monitor-Ausfall/Neustart, Volume-Mountpoint-Auflösung und Eject-Ablehnung geprüft.
-- Stop-/Pause-Regressionsfälle waren vor dem Queue-Steuersperrenfix rot. Ein weiterer Test wartete zuerst nur auf
-  Historienbeginn; korrigiert auf Queue-/Laufabschluss. Mountpoint-Regression vor dem Fix ebenfalls rot.
-  Nur der finale Gesamtlauf gilt als grüne Evidenz.
-- Xcode Debug `build test`: grün, vier Bundle-/Signaturtests. Format-Lint und Diff-Prüfung sauber;
-  keine Compilerwarnungen. Signatur-/Entitlement-/Packaging-Konfiguration unverändert; keine neue Release-Zusage.
-- Toolchain wie oben; Codefingerprint `69706db7ba30…` über 427 Dateien: `/tmp/mackopia-p2-code-state.txt`.
-  Logs: `/tmp/mackopia-p2-{swift,xcode,lint}.log`. Gezielte Diagnose: `/tmp/mackopia-p2-*-diagnose*.log`.
-- Kein Nutzer-Speicherziel und keine Nutzer-Default-Kopia-Konfiguration berührt. Eject-Negativtests werfen nichts aus.
-- Frühere Phase-1-/Release-Evidenz: [Phase-1-Abschluss](history/STATUS-Phase1-Abschluss-2026-10-25.md).
+- Vollständige Package-Suite: **556 Tests grün** (537 Foundation, 19 Contract), echte temporäre Kopia-Integration.
+- Neuer Durchstich: Backup → zusätzliche fremde Identität → Originalquelle entfernen → Katalog/Browser/Suche →
+  kompletter Restore → SHA-256-Inhaltsvergleich, leere Datei, Symlink, POSIX-Modus und mtime → Konfliktablehnung →
+  Quick-Look-Dateirestore/Cache-Löschung → Abbruch/erneute Admission → Beschreibung/Pin/Unpin mit erhaltenem Safety-Pin.
+  Abschließender Secret-Negativscan über reguläre Temp-Dateien; kein Nutzer-Speicherziel/Default-Kopia-Config berührt.
+- Regression: Dateirestore mit Unicode-Namen war vor dem Manifestpfad-/NFC-NFD-Fix rot; danach grün.
+  Wartebedingung verlangt abgeschlossene Historie und freigegebenen Lauf statt eines kurzfristig leeren Active-Felds.
+- Neue Unitfälle: Traversal/Größenlimits, falsche UUID/Symlink-Ziel, private eindeutige Ordner, fremde Selektoren,
+  mehrdeutige Namensschreibweisen, Symlink-Abstieg, begrenzte zyklische Suche und Cancellation.
+- Xcode Debug `build test`: grün, vier Bundle-/Signaturtests. Format-Lint/Diff sauber, keine Compilerwarnungen.
+  Signatur-/Entitlement-/Packaging-Konfiguration unverändert; keine neue Release-Zusage.
+- Toolchain wie oben. Codefingerprint `29e46ed920ef…` über 444 Dateien: `/tmp/mackopia-p3-code-state.txt`.
+  Finale Logs: `/tmp/mackopia-p3-{swift,xcode,lint}.log`; gezielte Diagnose: `/tmp/mackopia-p3-*-diagnose.log`.
+- UI-Checkliste §7.8: Systemkomponenten, sichere Defaults, DE/EN und Preview-Zustände im Code geprüft.
+  Keine behaupteten Live-Screenshots, VoiceOver-/Tastatur-/Quick-Look-/Drucknachweise; siehe Ledger.
+- Frühere Evidenz: [Phase 2](history/STATUS-Phase2-Abschluss-2026-10-25.md),
+  [Phase 1](history/STATUS-Phase1-Abschluss-2026-10-25.md).
 
-## Offene Live-Nachweise – kein globaler Entwicklungsstopp
+## Offene Live-Nachweise und konkrete Grenzen – kein globaler Entwicklungsstopp
 
 | Nachweis | Betroffene Funktion | Exakte nächste Aktion / Besitzer |
 |---|---|---|
-| Computer Use bisher nicht freigegeben | Live-UI/Registrierung | Nutzer erlaubt Computer Use oder öffnet die gebaute App; Agent prüft danach den integrierten Pfad |
-| SMAppService und registrierter positiver/negativer App-Agent-Test | Installierter Dienst/XPC | Nutzer installiert/öffnet App und aktiviert Hintergrunddienst; Agent prüft Status/Peer |
-| Login-Keychain/TCC/FDA und Update-Stabilität | Produktive Secrets/geschützte Quellen | Nutzer + Agent: ausschließlich Temp-Ziel am registrierten Dienst; ggf. FDA bestätigen, Agent-/Kind-Leseevidenz prüfen |
-| Safari-Testdatei fehlt oder ist >1 MiB | Konservative FDA-Erkennung | Betroffenen Zugriff gesperrt lassen; begrenzte alternative Kind-Leseprobe implementieren/nachweisen |
-| Reales Unmount/Eject und Abziehen | Optionales Auswerfen/Hardware | Nutzer + Agent: entbehrliches USB-Testvolume, UUID-Wechsel/Veto/Cancellation/Abziehen gezielt prüfen; kein Force |
-| Native Mitteilungszustellung und Aktionen | Benachrichtigungen | Nutzer aktiviert Einstellung am registrierten Dienst; Agent prüft Zustellung/Retry/Details mit Temp-Plan |
-| DE/EN, Light/Dark/Kontrast, Tastatur, VoiceOver | UI-/Releasequalität | Phase 5/6: Screenshots und integrierter A11y-Audit; bisher Previews/Katalog/Build, keine manuelle Zusage |
-| Quarantäne/Gatekeeper, Updates, Kopia-Checkpoint 45 statt 15 Minuten | Release | Phase 6: Installationsartefakt und bewusste Freigabe prüfen; Checkpoint-Produktentscheidung treffen |
+| Installierter Dienst/XPC | SMAppService, Peer-Vertrauen | Nutzer aktiviert gebaute App/Hintergrunddienst; Agent prüft positive/negative registrierte Peers |
+| Login-Keychain/TCC/FDA/Updates | Produktive Secrets/geschützte Quellen | Nutzer + Agent: nur Temp-Ziel, ggf. FDA bestätigen; frische Agent-/Kind-Leseevidenz und Update-ACL prüfen |
+| Safari-Testdatei fehlt oder ist >1 MiB | Konservative FDA-Erkennung | Zugriff gesperrt lassen; begrenzte alternative Kind-Leseprobe entwickeln/nachweisen |
+| Reales Unmount/Eject/Abziehen | Optionale Hardwarefunktion | Nutzer + Agent: entbehrliches USB-Testvolume, UUID-Wechsel/Veto/Abbruch; kein Force |
+| Native Mitteilungen/Aktionen | Benachrichtigungen | Nutzer aktiviert am registrierten Dienst; Agent prüft Zustellung/Retry/Details mit Temp-Plan |
+| Integrierter Restore-UI-Durchgang und PDF | Fenster, Quick Look, Recovery-Kit | Agent + Nutzer: Temp-Backup auswählen, Vorschau schließen/Cache prüfen, Restore/Abbruch, Drucklayout und PDF prüfen |
+| DE/EN, Light/Dark/Kontrast, Tastatur/VoiceOver | UI-/Releasequalität | Phase 5/6: Screenshots/minimales Fenster und A11y-Audit; bisher nur Code/Previews/Katalog/Build |
+| Harte Dienstbeendigung | Quick-Look-Cache | Private Cache-Reste nach Crash möglich; Sitzung beim regulären Schließen/Shutdown bereinigt, Startup-Reinigung ergänzen |
+| Große Kataloge/Verzeichnisse | Restore-Browser | >128 Quellen/1.000 Snapshots/8 MiB oder >2.000 Einträge pro Seite blockieren explizit; Pagination vor Freigabe größerer Bestände ergänzen |
+| Quarantäne/Gatekeeper/Updates, Kopia-Checkpoint 45 statt 15 Minuten | Release | Phase 6: Installationsartefakt und bewusste Freigabe prüfen; Checkpoint-Produktentscheidung treffen |
 
 ## Nächster vollständiger Coding-Auftrag
 
-**Phase 3 aus PROJEKT.md §14: vollständige Wiederherstellung und Recovery.**
+**Phase 4 aus PROJEKT.md §14: zuerst S3 als vollständigen Backend-Block anschließen.**
 
-1. Snapshot-Tabelle/Filter und lazy Browser/Suche über AgentProtocol/XPC und den alleinigen Dienstbesitzer verbinden.
-2. Datei/Ordner/Snapshot-Auswahl, Zielauswahl, Fortschritt/Abbruch und sichere Konfliktregeln ohne stilles Überschreiben.
-3. Quick Look und Recovery-Kit/Hilfe verbinden; fremde Quellidentitäten und bekannte Metadatenlimits berücksichtigen.
-4. Repräsentative Temp-Daten/Metadaten, Hashvergleich, Konflikt/Abbruch; final Package/Xcode/Format und Doku.
-
-Fertigkriterium: Ein Backup ist in der App auffindbar, prüfbar und sicher wiederherstellbar; gemeinsame Gates,
-Secrets-/Quell-/Ziel-UUID-Grenzen bleiben erhalten. Einstieg: PROJEKT.md §6.4, §8.4, §9, §11.2, §12.
-UI-Verfeinerungen (Wochentageditor, weitere Mitteilungsvarianten/Stoppen-und-Auswerfen) gehören zum Phase-5-Audit.
+Keychain-/Transport- und Erzeugen/Verbinden/Testen-Pfad über Runtime, XPC und Assistent verdrahten;
+Offline/Auth/Reconnect und Restore mitführen. Vorhandene Swift-/Spike-Verträge wiederverwenden.
+Temporären S3-Lifecycle und Secret-Persistenznegativtest ausführen, dann Package/Xcode/Format und Doku.
+Keine fremden Konten/Infrastruktur ohne Auftrag; fehlenden realen Zugang nur als Backend-Nachweis erfassen.
+Einstieg: PROJEKT.md §6.2–§6.4, §8–§9, §14 Phase 4 und SPIKE-D-SECRETS.md.
+Fertigkriterium: ein S3-Ziel ist im Assistenten sicher eingerichtet, sichert und stellt über denselben Dienst wieder her.
+Danach WebDAV-Pipe-Transport, anschließend SFTP inklusive bewusster Host-Key-Freigabe.
 Name/Bundle-Präfix MacKopia / com.example.MacKopia; Lizenzmodell offen. [Historienindex](history/README.md).

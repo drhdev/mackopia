@@ -12,6 +12,8 @@ final class AgentConnection {
     var showSetup = false
     var showRecovery = false
     var showActivity = false
+    var showRestore = false
+    var recoveryKitRepositoryID: UUID?
     var editingPlan: BackupPlan?
     private var client: AgentServiceClient?
     private var registration: AgentServiceRegistration?
@@ -31,7 +33,7 @@ final class AgentConnection {
     var requiresApproval: Bool { registration?.status == .requiresApproval }
     var canConfigure: Bool {
         connected && !busy && !showSetup && editingPlan == nil && state?.configuration != nil
-            && state?.activePlanID == nil
+            && state?.activePlanID == nil && state?.restore?.phase != .running
     }
     var canRun: Bool { canConfigure && !(state?.configuration?.plans.isEmpty ?? true) }
 
@@ -74,13 +76,15 @@ final class AgentConnection {
         observation?.cancel()
         observation = nil
         commandTask = Task {
-            defer { busy = false; commandTask = nil; start() }
+            var succeeded = false
             do {
                 state = try await client.send(command)
                 connected = true
                 message = state?.issue.map(Self.description)
-                completed()
+                succeeded = true
             } catch { message = Self.description(error as? LocalServiceIssue ?? .unavailable) }
+            busy = false; commandTask = nil; start()
+            if succeeded { completed() }
         }
     }
     func cancelOperation() { commandTask?.cancel() }
@@ -94,7 +98,13 @@ final class AgentConnection {
         }
     }
     func resume(_ planID: UUID? = nil) { send(.resume(planID: planID)) }
-    func stop() { if let id = state?.activePlanID { send(.stop(id)) } }
+    func stop() {
+        if state?.restore?.phase == .running, let id = state?.restore?.operationID {
+            send(.cancelRestore(id))
+        } else if let id = state?.activePlanID {
+            send(.stop(id))
+        }
+    }
 
     func chooseDirectory(completion: @escaping (BackupSource) -> Void) {
         let panel = NSOpenPanel()
@@ -123,6 +133,26 @@ final class AgentConnection {
                 completion(source)
             } catch { message = Self.description(.destination) }
         }
+    }
+
+    func defaultRestoreDestination() async -> BackupSource? {
+        guard !preview else { return nil }
+        return await Task.detached { () -> BackupSource? in
+            let directory = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Downloads")
+            let url = directory.resolvingSymlinksInPath()
+            guard
+                let values = try? url.resourceValues(forKeys: [
+                    .isDirectoryKey, .volumeUUIDStringKey, .volumeNameKey,
+                    .volumeIsRemovableKey, .volumeIsLocalKey,
+                ]),
+                values.isDirectory == true, values.volumeIsLocal == true, let uuid = values.volumeUUIDString
+            else { return nil }
+            return try? BackupSource(
+                path: url.path,
+                volume: VolumeIdentity(
+                    uuid: uuid, name: values.volumeName ?? "Volume",
+                    isRemovable: values.volumeIsRemovable ?? false, isNetwork: false))
+        }.value
     }
 
     func lastSuccess(_ id: UUID) -> JobRun? {

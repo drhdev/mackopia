@@ -1,19 +1,19 @@
 import Foundation
 
-struct KopiaTask: Decodable, Sendable, CustomReflectable {
-    struct Counter: Decodable, Sendable {
-        let value: Int64?
-        let units: String?
-        let level: String?
+package struct KopiaTask: Decodable, Sendable, CustomReflectable {
+    package struct Counter: Decodable, Sendable {
+        package let value: Int64?
+        package let units: String?
+        package let level: String?
     }
 
-    let id: String?
-    let startTime: String?
-    let endTime: String?
-    let kind: String?
-    let status: String?
-    let counters: [String: Counter]?
+    package let id: String?
+    package let startTime: String?
+    package let endTime: String?
+    package let kind: String?
+    package let status: String?
+    package let counters: [String: Counter]?
 
     // Raw descriptions, progressInfo and error text are deliberately not part of this boundary.
-    var customMirror: Mirror { Mirror(self, children: ["task": "<private>"]) }
+    package var customMirror: Mirror { Mirror(self, children: ["task": "<private>"]) }
 }
