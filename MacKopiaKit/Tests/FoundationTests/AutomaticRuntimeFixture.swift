@@ -42,6 +42,8 @@ struct AutomaticRuntimeFixture: Sendable {
         verification: AutomaticSnapshotVerification? = nil,
         testRestore: AutomaticTestRestore? = nil,
         coordinator: BackupOperationCoordinator? = nil,
+        check: (@Sendable (UUID) async throws -> Void)? = nil,
+        maintenance: (@Sendable (JobRun) async throws -> Void)? = nil,
         issue: (@Sendable (AutomaticBackupIssue) async -> Void)? = nil
     ) throws -> AutomaticBackupRuntime<SchedulerTestClock> {
         AutomaticBackupRuntime(
@@ -52,6 +54,7 @@ struct AutomaticRuntimeFixture: Sendable {
             homeDirectory: "/Home",
             loginDate: time.date, clock: time, now: { time.date }, monitor: monitorOverride ?? monitor,
             reachability: RuntimeReachability(), jitter: { 0 }, verification: verification, testRestore: testRestore,
+            check: check, maintenance: maintenance,
             issue: issue ?? { await issues.record($0) })
     }
 }

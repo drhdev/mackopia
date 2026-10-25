@@ -1176,6 +1176,466 @@
           }
         }
       }
+    },
+    "Abstand in Minuten": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Interval in minutes"
+          }
+        }
+      }
+    },
+    "Aktion empfohlen": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Action recommended"
+          }
+        }
+      }
+    },
+    "Alle Backups pausiert": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "All backups paused"
+          }
+        }
+      }
+    },
+    "Automatik angehalten. Starte den Hintergrunddienst neu und prüfe die Aktivität.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automatic backups stopped. Restart the background service and check Activity."
+          }
+        }
+      }
+    },
+    "Automatisch sichern": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Back up automatically"
+          }
+        }
+      }
+    },
+    "Backup überfällig": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Backup overdue"
+          }
+        }
+      }
+    },
+    "Backup-Passwort prüfen": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Check backup password"
+          }
+        }
+      }
+    },
+    "Backup-Plan pausiert. Setze ihn fort, bevor du ein Backup startest.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Backup plan paused. Resume it before starting a backup."
+          }
+        }
+      }
+    },
+    "Backups aktuell und geprüft": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Backups up to date and verified"
+          }
+        }
+      }
+    },
+    "Bei Problemen und erstem Erfolg benachrichtigen": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Notify about problems and the first successful backup"
+          }
+        }
+      }
+    },
+    "Beim Anschließen des Laufwerks sichern": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Back up when the drive connects"
+          }
+        }
+      }
+    },
+    "Bestehende Termine beibehalten": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keep existing schedules"
+          }
+        }
+      }
+    },
+    "Bis morgen um 08:00": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Until tomorrow at 08:00"
+          }
+        }
+      }
+    },
+    "Details anzeigen": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show details"
+          }
+        }
+      }
+    },
+    "Fehler und kritische Zustände werden höchstens einmal täglich gemeldet. Regelmäßige Erfolgsmeldungen bleiben aus.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Problems and critical states are reported at most once a day. Routine success notifications stay off."
+          }
+        }
+      }
+    },
+    "Für eine Stunde": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "For one hour"
+          }
+        }
+      }
+    },
+    "In regelmäßigen Abständen": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "At regular intervals"
+          }
+        }
+      }
+    },
+    "Laufwerk nach erfolgreichem Backup auswerfen": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eject drive after a successful backup"
+          }
+        }
+      }
+    },
+    "Letztes Backup enthält Hinweise": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last backup has warnings"
+          }
+        }
+      }
+    },
+    "Letztes Backup fehlgeschlagen": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last backup failed"
+          }
+        }
+      }
+    },
+    "Noch kein Prüfnachweis": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No verification recorded yet"
+          }
+        }
+      }
+    },
+    "Nur manuell": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Manual only"
+          }
+        }
+      }
+    },
+    "Nur mit Netzteil sichern": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Back up only on AC power"
+          }
+        }
+      }
+    },
+    "Nächstes Backup": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Next backup"
+          }
+        }
+      }
+    },
+    "Pause kann nicht automatisch enden. Setze den Plan manuell fort.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The pause cannot end automatically. Resume the plan manually."
+          }
+        }
+      }
+    },
+    "Pausiert bis": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Paused until"
+          }
+        }
+      }
+    },
+    "Pausiert – bereits gesicherte Daten bleiben erhalten.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Paused — data already backed up is preserved."
+          }
+        }
+      }
+    },
+    "Prüfen": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verify"
+          }
+        }
+      }
+    },
+    "Prüfung fehlgeschlagen": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verification failed"
+          }
+        }
+      }
+    },
+    "Prüfung nicht erfolgreich. Prüfe Speicherziel und Aktivität und starte die Prüfung erneut.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verification unsuccessful. Check the destination and Activity, then retry verification."
+          }
+        }
+      }
+    },
+    "Prüfung überfällig": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verification overdue"
+          }
+        }
+      }
+    },
+    "Quellenzugriff nicht bestätigt": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Source access not confirmed"
+          }
+        }
+      }
+    },
+    "Schutz des letzten Backups nicht bestätigt": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Protection of the last backup not confirmed"
+          }
+        }
+      }
+    },
+    "Speicherziel fast voll": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Destination nearly full"
+          }
+        }
+      }
+    },
+    "Test-Wiederherstellung fehlgeschlagen": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Test restore failed"
+          }
+        }
+      }
+    },
+    "Täglich": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Daily"
+          }
+        }
+      }
+    },
+    "Ungewöhnlich wenige Daten gesichert": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unusually little data backed up"
+          }
+        }
+      }
+    },
+    "Verlauf nicht verfügbar": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "History unavailable"
+          }
+        }
+      }
+    },
+    "Verpasste Backups nachholen": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Catch up on missed backups"
+          }
+        }
+      }
+    },
+    "Wartung abgeschlossen": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Maintenance completed"
+          }
+        }
+      }
+    },
+    "Wartung fehlgeschlagen": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Maintenance failed"
+          }
+        }
+      }
+    },
+    "Wartung nicht abgeschlossen. Prüfe das Speicherziel und die Aktivität.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Maintenance incomplete. Check the destination and Activity."
+          }
+        }
+      }
+    },
+    "Wiederherstellung erfolgreich getestet": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Restore successfully tested"
+          }
+        }
+      }
+    },
+    "Zuletzt erfolgreich geprüft": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last successful verification"
+          }
+        }
+      }
+    },
+    "Automatik neu starten": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Restart automatic backups"
+          }
+        }
+      }
+    },
+    "Backup wartet auf passende Energie- oder Netzwerkbedingungen.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Backup is waiting for suitable power or network conditions."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

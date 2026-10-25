@@ -3,7 +3,7 @@ import Foundation
 
 /// Secrets are accepted only in setup commands, never returned in responses or events.
 public struct AgentRequest: Codable, Sendable, CustomReflectable {
-    public static let currentVersion: UInt32 = 2
+    public static let currentVersion: UInt32 = 3
     public let version: UInt32
     public let id: UUID
     public let command: Command
@@ -16,6 +16,11 @@ public struct AgentRequest: Codable, Sendable, CustomReflectable {
         case recoverConfiguration
         case run(UUID)
         case stop(UUID)
+        case verify(UUID)
+        case restartAutomation
+        case setNotificationsEnabled(Bool)
+        case pause(planID: UUID?, until: Date?)
+        case resume(planID: UUID?)
     }
 
     public init(_ command: Command, version: UInt32 = currentVersion, id: UUID = UUID()) {
@@ -26,7 +31,14 @@ public struct AgentRequest: Codable, Sendable, CustomReflectable {
 
     public func validate() throws {
         guard version == Self.currentVersion else { throw AgentServiceError.incompatibleProtocol }
-        guard try JSONEncoder().encode(self).count <= 1_048_576 else { throw LocalServiceIssue.invalidRequest }
+        guard let encoded = try? JSONEncoder().encode(self), encoded.count <= 1_048_576 else {
+            throw LocalServiceIssue.invalidRequest
+        }
+        if case .pause(_, let until) = command, let until {
+            guard until.timeIntervalSinceReferenceDate.isFinite, until >= .distantPast, until <= .distantFuture else {
+                throw LocalServiceIssue.invalidRequest
+            }
+        }
         if case .createPlan(let name, _, let source) = command {
             guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, name.utf8.count <= 1024,
                 !name.utf8.contains(0), source.bookmark == nil

@@ -13,6 +13,7 @@ package actor JobQueue {
     var workRestored = false
     var discardedWork: Set<UUID> = []
     private var configurationHeld = false
+    private var controlHolds: Set<UUID> = []
     var activeJobs: [UUID: BackupJob] = [:]
     private var executions: [UUID: Execution] = [:]
     struct Pause {
@@ -84,7 +85,7 @@ package actor JobQueue {
     /// FIFO follows admission order, not wall time. Skip active plans so their follow-ups cannot
     /// starve other plans. There is at most one active admission per plan.
     package func takeNext() -> BackupJob? {
-        guard !pausePersistenceFailed, !configurationHeld, !recoveryHeld else { return nil }
+        guard !pausePersistenceFailed, !configurationHeld, controlHolds.isEmpty, !recoveryHeld else { return nil }
         guard let index = pending.firstIndex(where: { activeJobs[$0.plan.id] == nil && !isPaused($0.plan.id) }) else {
             return nil
         }
@@ -188,6 +189,12 @@ package actor JobQueue {
     }
 
     /// Reload holds dequeue without changing durable pauses or cancelling unaffected active work.
+    func beginControl(_ id: UUID) { controlHolds.insert(id) }
+    func endControl(_ id: UUID) {
+        controlHolds.remove(id)
+        admissionSignal.yield(pauseRevision)
+    }
+
     func holdForConfiguration(_ held: Bool) {
         configurationHeld = held
         if !held { admissionSignal.yield(pauseRevision) }

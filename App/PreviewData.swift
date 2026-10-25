@@ -2,7 +2,9 @@ import BackupDomain
 import Foundation
 
 enum PreviewData {
-    @MainActor static func connection(empty: Bool = false, issue: LocalServiceIssue? = nil) -> AgentConnection {
+    @MainActor static func connection(
+        empty: Bool = false, issue: LocalServiceIssue? = nil, paused: Bool = false, critical: Bool = false
+    ) -> AgentConnection {
         let connection = AgentConnection(preview: true)
         connection.connected = true
         do {
@@ -21,7 +23,18 @@ enum PreviewData {
                 options: PlanOptions(lowPriority: true, ejectVolumeAfterBackup: false), health: HealthThresholds())
             connection.state = LocalServiceState(
                 configuration: try BackupConfiguration(
-                    repositories: empty ? [] : [repository], plans: empty ? [] : [plan]), issue: issue)
+                    repositories: empty ? [] : [repository], plans: empty ? [] : [plan]), issue: issue,
+                plans: empty
+                    ? []
+                    : [
+                        PlanRuntimeState(
+                            planID: plan.id,
+                            nextRun: .now.addingTimeInterval(3600), pause: paused ? .indefinite : nil,
+                            health: HealthAssessment(
+                                planID: plan.id, lastSuccessfulBackup: .now.addingTimeInterval(-1800),
+                                reasons: critical ? [.verificationFailed] : [.verificationUnavailable]),
+                            verification: nil, testRestore: nil, maintenance: nil)
+                    ])
             connection.message = issue.map(AgentConnection.description)
         } catch { connection.message = AgentConnection.description(.invalidRequest) }
         return connection

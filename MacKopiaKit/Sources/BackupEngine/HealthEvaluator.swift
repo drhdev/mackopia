@@ -12,6 +12,9 @@ package struct HealthObservations: Sendable {
     }
     package var verification: Verification = .unavailable
     package var blockers: Set<Blocker> = []
+    package var destinationNearlyFull = false
+    package var testRestoreFailed = false
+    package var maintenanceFailed = false
     package var capacity: (used: Int64, total: Int64)?
 
     package init() {}
@@ -53,6 +56,9 @@ package enum HealthEvaluator {
             case .backgroundServiceDisabled: reasons.insert(.backgroundServiceDisabled)
             }
         }
+        if observations.destinationNearlyFull { reasons.insert(.destinationNearlyFull) }
+        if observations.testRestoreFailed { reasons.insert(.testRestoreFailed) }
+        if observations.maintenanceFailed { reasons.insert(.maintenanceFailed) }
         if let capacity = observations.capacity, capacity.total > 0, capacity.used >= 0,
             capacity.used <= capacity.total, Double(capacity.used) / Double(capacity.total) > 0.9
         {

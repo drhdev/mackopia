@@ -34,10 +34,28 @@ struct PlanEditorView: View {
                         Text("Maximum").tag(RetentionPreset.maximum)
                         if store.hasCustomRetention { Text("Eigene").tag(RetentionPreset.custom) }
                     }
-                    Text(
-                        "Backups werden manuell gestartet. Automatische Zeitpläne folgen im nächsten Entwicklungsblock."
-                    )
-                    .foregroundStyle(.secondary)
+                }
+                Section("Zeitplan") {
+                    Picker("Automatisch sichern", selection: $store.schedule) {
+                        if store.hasCustomSchedule {
+                            Text("Bestehende Termine beibehalten").tag(PlanEditorStore.Schedule.custom)
+                        }
+                        Text("Nur manuell").tag(PlanEditorStore.Schedule.manual)
+                        Text("In regelmäßigen Abständen").tag(PlanEditorStore.Schedule.interval)
+                        Text("Täglich").tag(PlanEditorStore.Schedule.daily)
+                    }
+                    if store.schedule == .interval {
+                        Stepper(value: $store.minutes, in: 1...10080) {
+                            LabeledContent("Abstand in Minuten", value: store.minutes.formatted())
+                        }
+                    }
+                    if store.schedule == .daily {
+                        DatePicker("Uhrzeit", selection: $store.time, displayedComponents: .hourAndMinute)
+                    }
+                    Toggle("Beim Anschließen des Laufwerks sichern", isOn: $store.onMount)
+                    Toggle("Verpasste Backups nachholen", isOn: $store.catchUp)
+                    Toggle("Nur mit Netzteil sichern", isOn: $store.requiresACPower)
+                    Toggle("Laufwerk nach erfolgreichem Backup auswerfen", isOn: $store.eject).disabled(!store.canEject)
                 }
                 if let message = store.connection.message { Text(message) }
                 if store.localError { Text("Eingaben ungültig. Prüfe Namen, Quellen und Speicherziel.") }

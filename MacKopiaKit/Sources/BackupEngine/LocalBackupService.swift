@@ -7,26 +7,33 @@ import SystemIntegration
 
 /// The agent owns exactly one service. All mutations and operation admission pass through it.
 public actor LocalBackupService {
-    private let store: ConfigStore
-    private let history: HistoryStore
-    private let secrets: any SecretStore
-    private let executable: URL
-    private let home: URL
-    private let temporary: URL
-    private let version: String
-    private let clock: any Clock<Duration>
-    private let sourceAccess: any SourceAccessChecking
-    private let protection: any BackupOperationProtecting
-    private let gate: RepositoryOperationGate
-    private var configuration: BackupConfiguration?
-    private var active: (UUID, Task<Void, Never>)?
-    private var mutating = false
-    private var stopped = false
-    private var started = false
-    private var issue: LocalServiceIssue?
-    private var progress: BackupProgress?
-    private var revision = UUID()
-    private var observers: [UUID: AsyncStream<Void>.Continuation] = [:]
+    let store: ConfigStore
+    let history: HistoryStore
+    let secrets: any SecretStore
+    let executable: URL
+    let home: URL
+    let temporary: URL
+    let version: String
+    let clock: any Clock<Duration>
+    let sourceAccess: any SourceAccessChecking
+    let protection: any BackupOperationProtecting
+    let gate: RepositoryOperationGate
+    var configuration: BackupConfiguration?
+    var active: UUID?
+    var runtime: AutomaticBackupRuntime<ServiceClock>?
+    let monitor: any SystemEventMonitoring
+    let runtimeClock: ServiceClock
+    let now: @Sendable () -> Date
+    let loginDate: Date
+    var mutating = false
+    var stopped = false
+    var started = false
+    var lowSpacePlans: Set<UUID> = []
+    var planIssues: [UUID: LocalServiceIssue] = [:]
+    var issue: LocalServiceIssue?
+    var progress: BackupProgress?
+    var revision = UUID()
+    var observers: [UUID: AsyncStream<Void>.Continuation] = [:]
 
     public init(executable: URL, home: URL, temporary: URL, expectedVersion: String) throws {
         try self.init(
@@ -40,9 +47,14 @@ public actor LocalBackupService {
     init(
         executable: URL, home: URL, temporary: URL, expectedVersion: String,
         secrets: any SecretStore, sourceAccess: any SourceAccessChecking, protection: any BackupOperationProtecting,
-        clock: any Clock<Duration> = ContinuousClock()
+        clock: any Clock<Duration> = ContinuousClock(),
+        monitor: any SystemEventMonitoring = LocalSystemEventMonitor(),
+        runtimeClock: ServiceClock = ServiceClock(ContinuousClock()),
+        now: @escaping @Sendable () -> Date = { .now }, loginDate: Date = .now
     ) throws {
         self.clock = clock
+        self.monitor = monitor
+        self.runtimeClock = runtimeClock; self.now = now; self.loginDate = loginDate
         self.sourceAccess = sourceAccess
         self.protection = protection
         self.executable = executable
@@ -60,10 +72,12 @@ public actor LocalBackupService {
         guard !stopped else { throw LocalServiceIssue.unavailable }
         guard !started else { return }
         started = true
-        _ = try await history.reconcileInterrupted(at: .now, workIDs: [])
         switch try await store.load() {
         case .loaded(let config): configuration = config
         case .safeMode: issue = .safeMode
+        }
+        if configuration != nil {
+            do { try await startRuntime() } catch { issue = .automationUnavailable }
         }
         changed()
     }
@@ -86,19 +100,20 @@ public actor LocalBackupService {
             removeObserver(id)
         }
         try Task.checkCancellation()
-        let snapshot = (configuration, active?.0, progress, issue, revision)
+        let queued = await runtime?.currentPlanID()
+        let snapshot = (configuration, active ?? queued, progress, issue, revision)
         let runs = try await history.recent(limit: 50)
+        let plans = try await runtimeProjection()
+        let pause = await runtime?.pauseState()
         return LocalServiceState(
             configuration: snapshot.0, runs: runs,
-            activePlanID: snapshot.1, progress: snapshot.2, issue: snapshot.3, revision: snapshot.4)
+            activePlanID: snapshot.1, progress: snapshot.2, issue: snapshot.3, revision: snapshot.4, plans: plans,
+            globalPause: pause)
     }
 
-    public func setup(
+    func performSetup(
         name: String, destination: BackupSource, source: BackupSource, password: String, create: Bool
     ) async throws {
-        try availableForMutation()
-        mutating = true
-        defer { mutating = false; changed() }
         guard password.utf8.count <= 65_536, !password.isEmpty, !password.utf8.contains(0),
             !create || password.count >= 12, let config = configuration
         else { throw LocalServiceIssue.invalidRequest }
@@ -124,7 +139,8 @@ public actor LocalBackupService {
         // Reject recursion/overlap before touching the destination or storing a credential.
         _ = try await BackupPathPreflight().validate(plan: plan, repository: repository)
         let updated = try BackupConfiguration(
-            repositories: config.repositories + [repository], plans: config.plans + [plan])
+            repositories: config.repositories + [repository], plans: config.plans + [plan],
+            notificationsEnabled: config.notificationsEnabled)
         do { try await secrets.write(SecretValue(data: Data(password.utf8)), for: repository.secretRef) } catch {
             throw LocalServiceIssue.keychain
         }
@@ -157,108 +173,72 @@ public actor LocalBackupService {
         }
     }
 
-    public func createPlan(name: String, repositoryID: UUID, source: BackupSource) async throws {
-        try availableForMutation()
+    func performCreatePlan(name: String, repositoryID: UUID, source: BackupSource) async throws {
         guard let config = configuration, let repository = config.repositories.first(where: { $0.id == repositoryID })
         else {
             throw LocalServiceIssue.invalidRequest
         }
-        mutating = true
-        defer { mutating = false; changed() }
         let url = URL(fileURLWithPath: source.path).resolvingSymlinksInPath()
         try source.volume.requireMatch(uuid: volume(url).uuid)
         guard url.path == source.path else { throw LocalServiceIssue.destination }
         let plan = try LocalPlanFactory.make(name: name, source: source, repositoryID: repositoryID)
         _ = try await BackupPathPreflight().validate(plan: plan, repository: repository)
-        let updated = try BackupConfiguration(repositories: config.repositories, plans: config.plans + [plan])
+        let updated = try BackupConfiguration(
+            repositories: config.repositories, plans: config.plans + [plan],
+            notificationsEnabled: config.notificationsEnabled)
         try await persist(updated)
     }
 
-    public func recoverConfiguration() async throws {
+    func performRecoverConfiguration() async throws {
         guard !stopped else { throw LocalServiceIssue.unavailable }
-        guard !mutating, active == nil else { throw LocalServiceIssue.busy }
         guard configuration == nil else { throw LocalServiceIssue.invalidRequest }
-        mutating = true
-        defer { mutating = false; changed() }
         do {
             configuration = try await store.restoreBackup()
             issue = nil
         } catch { throw LocalServiceIssue.safeMode }
     }
 
-    public func savePlan(_ plan: BackupPlan) async throws {
-        try availableForMutation()
+    func performSavePlan(_ plan: BackupPlan) async throws {
         guard let config = configuration, config.plans.contains(where: { $0.id == plan.id }),
-            plan.triggers == [.manual], plan.options.parallelism == nil, plan.options.uploadLimitMbps == nil,
-            !plan.options.ejectVolumeAfterBackup
+            plan.options.parallelism == nil, plan.options.uploadLimitMbps == nil
         else { throw LocalServiceIssue.invalidRequest }
-        mutating = true
-        defer { mutating = false; changed() }
         guard let repository = config.repositories.first(where: { $0.id == plan.repositoryID }) else {
             throw LocalServiceIssue.invalidRequest
         }
+        if plan.options.ejectVolumeAfterBackup {
+            guard case .filesystem(_, let volume) = repository.kind, volume?.isRemovable == true,
+                volume?.isNetwork == false
+            else { throw LocalServiceIssue.invalidRequest }
+        }
         _ = try await BackupPathPreflight().validate(plan: plan, repository: repository)
         let updated = try BackupConfiguration(
-            repositories: config.repositories, plans: config.plans.map { $0.id == plan.id ? plan : $0 })
+            repositories: config.repositories, plans: config.plans.map { $0.id == plan.id ? plan : $0 },
+            notificationsEnabled: config.notificationsEnabled)
         try await persist(updated)
     }
 
     public func run(_ planID: UUID) async throws {
         try availableForMutation()
-        guard let config = configuration, let plan = config.plans.first(where: { $0.id == planID }), plan.isEnabled,
-            let repository = config.repositories.first(where: { $0.id == plan.repositoryID })
+        guard let config = configuration, config.plans.contains(where: { $0.id == planID && $0.isEnabled }),
+            let runtime
         else { throw LocalServiceIssue.invalidRequest }
-        mutating = true
-        defer { mutating = false; changed() }
-        let paths = try KopiaRepositoryPaths(repositoryID: repository.id, homeDirectory: home)
-        let binary = try KopiaBinaryVerifier(
-            executable: executable, paths: paths, temporaryDirectory: temporary, expectedVersion: version)
-        // Both agent and bundled child must establish fresh protected-file access on every preflight.
-        let preflight = BackupPreflight(
-            prerequisites: BackupPrerequisitePreflight(binary: binary, secrets: secrets), gate: gate,
-            sourceAccess: sourceAccess)
-        let report = try await preflight.evaluate(plan: plan, repository: repository)
-        guard report.outcome == .checksPassed else {
-            if report.checks.contains(where: { $0.action == .checkSourceAccess }) {
-                issue = .permissions
-            } else if report.checks.contains(where: { $0.action == .checkKeychain || $0.action == .enterBackupPassword }
-            ) {
-                issue = .keychain
-            } else {
-                issue = .destination
-            }
-            changed()
-            throw issue ?? .backupFailed
-        }
-        let engine = ManualBackupEngine(
-            runner: ConfiguredJobRunner(
-                store: store, queue: JobQueue(),
-                coordinator: BackupOperationCoordinator(preflight: preflight, protection: protection)),
-            sessions: FilesystemBackupSessions(
-                executable: executable, homeDirectory: home, temporaryDirectory: temporary,
-                user: NSUserName(), secrets: secrets), history: history, resolver: try TimeMachineExclusionResolver(),
-            homeDirectory: home.path, progress: { [weak self] value in await self?.received(value) })
-        try await engine.enqueue(planID: planID)
-        issue = nil
-        let task = Task { [weak self] in
-            do {
-                let result = try await engine.performNext()
-                await self?.finished(failed: result?.outcome == .failed || result?.outcome == .skipped)
-            } catch { await self?.finished(failed: !(error is CancellationError)) }
-        }
-        active = (planID, task)
+        do { try await runtime.enqueue(planID: planID) } catch JobAdmissionError.planPaused {
+            throw LocalServiceIssue.planPaused
+        } catch { throw LocalServiceIssue.backupFailed }
         changed()
     }
 
-    public func stop(_ planID: UUID) throws {
-        guard active?.0 == planID else { throw LocalServiceIssue.invalidRequest }
-        active?.1.cancel()
+    public func stop(_ planID: UUID) async throws {
+        guard !stopped, let runtime, configuration?.plans.contains(where: { $0.id == planID }) == true else {
+            throw LocalServiceIssue.invalidRequest
+        }
+        try await runtime.stop(planID: planID)
+        changed()
     }
 
     public func shutdown() async {
         stopped = true
-        active?.1.cancel()
-        await active?.1.value
+        await runtime?.shutdown()
         while mutating {
             let id = UUID()
             let stream = AsyncStream<Void> { observers[id] = $0 }
@@ -268,7 +248,7 @@ public actor LocalBackupService {
         changed()
     }
 
-    private func persist(_ updated: BackupConfiguration) async throws {
+    func persist(_ updated: BackupConfiguration) async throws {
         do {
             try await store.save(updated)
             configuration = updated
@@ -280,23 +260,28 @@ public actor LocalBackupService {
         }
     }
 
-    private func availableForMutation() throws {
+    func availableForMutation() throws {
         guard !stopped else { throw LocalServiceIssue.unavailable }
         guard configuration != nil else { throw LocalServiceIssue.safeMode }
-        guard !mutating, active == nil else { throw LocalServiceIssue.busy }
+        guard !mutating else { throw LocalServiceIssue.busy }
     }
-    private func received(_ value: BackupProgress) { progress = value; changed() }
-    private func finished(failed: Bool) {
-        active = nil; progress = nil; issue = failed ? .backupFailed : nil; changed()
+    func received(_ value: BackupProgress) { progress = value; changed() }
+    func activity(_ id: UUID?) {
+        active = id; progress = nil
+        if let id {
+            planIssues.removeValue(forKey: id)
+            if issue != .safeMode && issue != .automationUnavailable { issue = planIssues.values.first }
+        }
+        changed()
     }
-    private func removeObserver(_ id: UUID) { observers.removeValue(forKey: id)?.finish() }
-    private func changed() {
+    func removeObserver(_ id: UUID) { observers.removeValue(forKey: id)?.finish() }
+    func changed() {
         revision = UUID()
         let pending = observers.values
         observers.removeAll()
         for observer in pending { observer.yield(); observer.finish() }
     }
-    private func volume(_ url: URL) throws -> VolumeIdentity {
+    func volume(_ url: URL) throws -> VolumeIdentity {
         let values = try url.resourceValues(forKeys: [
             .isDirectoryKey, .volumeUUIDStringKey, .volumeNameKey, .volumeIsRemovableKey, .volumeIsLocalKey,
         ])

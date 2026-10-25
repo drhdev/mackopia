@@ -39,6 +39,9 @@ struct FoundationView: View {
                                 Label(message, systemImage: "exclamationmark.triangle")
                                 HStack {
                                     Button("Erneut verbinden") { connection.reconnect() }
+                                    if connection.state?.issue == .automationUnavailable {
+                                        Button("Automatik neu starten") { connection.send(.restartAutomation) }
+                                    }
                                     if connection.state?.issue == .safeMode {
                                         Button("Konfigurationssicherung wiederherstellen…") {
                                             connection.showRecovery = true
@@ -51,6 +54,11 @@ struct FoundationView: View {
                             }
                         }.padding()
                     }
+                    if connection.state?.globalPause != nil {
+                        LabeledContent("Alle Backups pausiert") {
+                            Button("Fortsetzen") { connection.resume() }
+                        }.padding()
+                    }
                     content
                 }
             }
@@ -60,6 +68,12 @@ struct FoundationView: View {
                     .help("Neuer Plan…").accessibilityLabel(Text("Neuer Plan…")).disabled(!connection.canConfigure)
                 Button("Jetzt sichern", systemImage: "play.fill") { connection.runSelected() }
                     .help("Jetzt sichern").accessibilityLabel(Text("Jetzt sichern")).disabled(!connection.canRun)
+                Menu("Pausieren", systemImage: "pause") {
+                    Button("Für eine Stunde") { connection.pause(.oneHour) }
+                    Button("Bis morgen um 08:00") { connection.pause(.untilTomorrowMorning) }
+                    Button("Unbegrenzt") { connection.pause(.indefinite) }
+                    Button("Fortsetzen") { connection.resume() }
+                }.disabled(!connection.connected || connection.busy)
                 Button("Stoppen", systemImage: "stop.fill") { connection.stop() }
                     .help("Stoppen").accessibilityLabel(Text("Stoppen")).disabled(
                         connection.state?.activePlanID == nil || connection.busy)
@@ -67,6 +81,9 @@ struct FoundationView: View {
         }
         .frame(minWidth: 800, minHeight: 520)
         .task { connection.start() }
+        .onChange(of: connection.showActivity) { _, requested in
+            if requested { savedRoute = Route.activity.rawValue; connection.showActivity = false }
+        }
         .confirmationDialog("Konfiguration wiederherstellen?", isPresented: $connection.showRecovery) {
             Button("Wiederherstellen") { connection.send(.recoverConfiguration) }
             Button("Abbrechen", role: .cancel) {}
@@ -116,6 +133,9 @@ struct FoundationView: View {
                 }
                 ForEach(plans) { plan in
                     Section(plan.name) {
+                        if let runtime = connection.state?.plans.first(where: { $0.planID == plan.id }) {
+                            PlanRuntimeView(runtime: runtime)
+                        }
                         if let run = connection.state?.runs.first(where: { $0.planID == plan.id }) {
                             Label(
                                 AgentConnection.outcome(run.outcome),
@@ -135,6 +155,16 @@ struct FoundationView: View {
                         }
                         HStack {
                             Button("Jetzt sichern") { connection.runSelected(plan.id) }.disabled(
+                                !connection.canConfigure || !plan.isEnabled)
+                            Menu("Pausieren") {
+                                Button("Für eine Stunde") { connection.pause(.oneHour, planID: plan.id) }
+                                Button("Bis morgen um 08:00") {
+                                    connection.pause(.untilTomorrowMorning, planID: plan.id)
+                                }
+                                Button("Unbegrenzt") { connection.pause(.indefinite, planID: plan.id) }
+                                Button("Fortsetzen") { connection.resume(plan.id) }
+                            }.disabled(connection.busy)
+                            Button("Prüfen") { connection.send(.verify(plan.id)) }.disabled(
                                 !connection.canConfigure || !plan.isEnabled)
                             Button("Bearbeiten…") { connection.editingPlan = plan }.disabled(!connection.canConfigure)
                         }

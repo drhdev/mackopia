@@ -57,6 +57,14 @@ package actor HistoryStore: JobHistoryRecording, JobHistoryScheduleReading {
                         index: "verification-health", on: "verifications",
                         columns: ["planID", "repositoryID", "kind", "endedAt"])
                 }
+                migrator.registerMigration("maintenance-history-v1") { db in
+                    try db.create(table: "maintenance") { table in
+                        table.primaryKey("id", .text)
+                        table.column("repositoryID", .text).notNull().indexed()
+                        table.column("endedAt", .double).notNull()
+                        table.column("payload", .blob).notNull()
+                    }
+                }
                 try migrator.migrate(queue)
                 return queue
             }

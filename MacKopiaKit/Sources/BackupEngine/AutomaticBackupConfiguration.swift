@@ -7,7 +7,6 @@ extension AutomaticBackupRuntime {
     /// watcher can silently recover safe mode. Changed work is cancelled through normal cleanup.
     package func reloadConfiguration() async throws {
         try await control(planID: nil) {
-            await self.queue.holdForConfiguration(true)
             do {
                 try await self.replaceConfiguration()
             } catch {
@@ -16,10 +15,9 @@ extension AutomaticBackupRuntime {
                 throw error
             }
         }
-        if state == .running { await queue.holdForConfiguration(false) }
     }
 
-    private func replaceConfiguration() async throws {
+    func replaceConfiguration() async throws {
         let version = generation
         let replacement = try await store.currentConfiguration()
         try checkReload(version)
@@ -58,7 +56,7 @@ extension AutomaticBackupRuntime {
         guard state == .running, generation == version else { throw CancellationError() }
     }
 
-    private func configurationFailed() async {
+    func configurationFailed() async {
         guard state == .running else { return }
         await shutdown()
         if state == .stopped { state = .configurationUnavailable }

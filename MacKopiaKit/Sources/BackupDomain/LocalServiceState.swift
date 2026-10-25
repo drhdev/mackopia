@@ -8,10 +8,13 @@ public struct LocalServiceState: Codable, Sendable {
     public let progress: BackupProgress?
     public let issue: LocalServiceIssue?
     public let revision: UUID
+    public let plans: [PlanRuntimeState]
+    public let globalPause: BackupPauseState?
 
     public init(
         configuration: BackupConfiguration?, runs: [JobRun] = [], activePlanID: UUID? = nil,
-        progress: BackupProgress? = nil, issue: LocalServiceIssue? = nil, revision: UUID = UUID()
+        progress: BackupProgress? = nil, issue: LocalServiceIssue? = nil, revision: UUID = UUID(),
+        plans: [PlanRuntimeState] = [], globalPause: BackupPauseState? = nil
     ) {
         self.configuration = configuration
         self.runs = Array(runs.prefix(50))
@@ -19,11 +22,13 @@ public struct LocalServiceState: Codable, Sendable {
         self.progress = progress
         self.issue = issue
         self.revision = revision
+        self.plans = plans; self.globalPause = globalPause
     }
 }
 
 public enum LocalServiceIssue: String, Error, Codable, Sendable, LocalizedError, CustomDebugStringConvertible {
-    case invalidRequest, busy, unavailable, safeMode, keychain, permissions, destination, backupFailed
+    case invalidRequest, busy, unavailable, safeMode, keychain, permissions, destination, backupFailed,
+        automationUnavailable, verificationFailed, maintenanceFailed, planPaused, waitingConditions
     public var errorDescription: String? { String(localized: "Dienstanfrage fehlgeschlagen.") }
     public var debugDescription: String { "Local service: " + rawValue }
 }
