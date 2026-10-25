@@ -32,6 +32,8 @@ struct BackupRecoveryTests {
         }
         try await waitForRuntime { (try? await history.recent().first?.outcome) == .succeeded }
         #expect(try await history.recent().first?.id != work.id)
+        // History commits before queue completion; observe the queue's durable completion boundary.
+        try await waitForRuntime { await runtime.queue.activeJobs.isEmpty }
         let reopened = fixture.store.pauseStore.makeSession()
         _ = try reopened.load()
         #expect(try reopened.loadWork().isEmpty)

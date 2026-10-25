@@ -3,7 +3,7 @@ import LocalAuthentication
 import Security
 
 struct KeychainItem: Sendable {
-    let accessGroup: String
+    let accessGroup: String?
     let account: String
     static let service = "com.example.MacKopia.secrets"
 }
@@ -33,11 +33,13 @@ struct SecurityKeychainBackend: KeychainBackend {
             return KeychainResult(status: status, data: result as? Data)
         case .add:
             guard let value else { return KeychainResult(status: errSecParam) }
-            query.merge(Self.attributes(value: value)) { _, new in new }
+            query.merge(Self.attributes(value: value, dataProtection: item.accessGroup != nil)) { _, new in new }
             status = SecItemAdd(query as CFDictionary, nil)
         case .update:
             guard let value else { return KeychainResult(status: errSecParam) }
-            status = SecItemUpdate(query as CFDictionary, Self.attributes(value: value) as CFDictionary)
+            status = SecItemUpdate(
+                query as CFDictionary,
+                Self.attributes(value: value, dataProtection: item.accessGroup != nil) as CFDictionary)
         case .delete:
             status = SecItemDelete(query as CFDictionary)
         }
@@ -48,21 +50,27 @@ struct SecurityKeychainBackend: KeychainBackend {
         // Background work reports unavailability rather than presenting authentication dialogs.
         let context = LAContext()
         context.interactionNotAllowed = true
-        return [
+        var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: KeychainItem.service,
             kSecAttrAccount as String: item.account,
-            kSecAttrAccessGroup as String: item.accessGroup,
-            kSecUseDataProtectionKeychain as String: true,
             kSecAttrSynchronizable as String: false,
             kSecUseAuthenticationContext as String: context,
         ]
+        if let group = item.accessGroup {
+            query[kSecAttrAccessGroup as String] = group
+            query[kSecUseDataProtectionKeychain as String] = true
+        }
+        // Without Data Protection/access-group attributes, SecItemAdd uses the login Keychain
+        // and its default ACL trusts the creating application. Never supply an all-applications ACL.
+        return query
     }
 
-    static func attributes(value: Data) -> [String: Any] {
-        [
-            kSecValueData as String: value,
-            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
-        ]
+    static func attributes(value: Data, dataProtection: Bool = true) -> [String: Any] {
+        var attributes: [String: Any] = [kSecValueData as String: value]
+        if dataProtection {
+            attributes[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        }
+        return attributes
     }
 }

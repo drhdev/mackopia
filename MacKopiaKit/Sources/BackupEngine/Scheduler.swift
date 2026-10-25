@@ -171,9 +171,16 @@ package actor Scheduler {
         guard receiver != nil, let deadline = nextRunDate else { return }
         let version = generation
         let delay = Duration.seconds(max(0, deadline.timeIntervalSince(now())))
-        let clock = clock
-        timer = Task { [weak self] in
-            do { try await clock.sleep(for: delay) } catch { return }
+        let clock = self.clock
+        timer = makeTimer(clock: clock, delay: delay, version: version)
+    }
+
+    private func makeTimer<C: Clock>(clock: C, delay: Duration, version: UInt64) -> Task<Void, Never>
+    where C.Duration == Duration {
+        // Capture before creating the task: executor delay must not move a scheduled deadline.
+        let instant = clock.now.advanced(by: delay)
+        return Task { [weak self] in
+            do { try await clock.sleep(until: instant, tolerance: nil) } catch { return }
             guard !Task.isCancelled else { return }
             await self?.fire(version: version)
         }

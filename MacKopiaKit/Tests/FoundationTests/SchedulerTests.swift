@@ -5,6 +5,24 @@ import SystemIntegration
 import Testing
 
 struct SchedulerTests {
+    @Test func delayedTimerTaskRetainsTheOriginalMonotonicDeadline() async throws {
+        let time = SchedulerTestClock()
+        let scheduler = scheduler(time)
+        try await scheduler.replace(plans: [plan(triggers: [.interval(minutes: 2)])])
+        let delivered = SchedulerDeliveries()
+        // Both calls run on the scheduler actor without suspension; its timer task cannot start yet.
+        await scheduler.startThenAdvance(time) { await delivered.append($0) }
+        do {
+            try await waitForRuntime { time.sleeperCount == 1 }
+            time.advance(1)
+            try await waitForRuntime(timeout: .seconds(1)) { await delivered.count == 1 }
+            await scheduler.stop()
+        } catch {
+            await scheduler.stop()
+            throw error
+        }
+    }
+
     @Test func simulatedSystemEventsReconcileSchedulerAndForwardStateHints() async throws {
         let time = SchedulerTestClock()
         let scheduler = scheduler(time)
@@ -231,4 +249,11 @@ private actor SchedulerDeliveries {
 private actor SchedulerSystemEventProbe {
     private(set) var events: [SystemEvent] = []
     func record(_ event: SystemEvent) { events.append(event) }
+}
+
+private extension Scheduler {
+    func startThenAdvance(_ clock: SchedulerTestClock, deliver: @escaping @Sendable (ScheduledRequest) async -> Void) {
+        start(deliver: deliver)
+        clock.advance(119)
+    }
 }

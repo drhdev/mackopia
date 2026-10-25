@@ -16,7 +16,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "No backups configured yet"
+            "value": "No backups configured"
           }
         }
       }
@@ -353,6 +353,806 @@
           "stringUnit": {
             "state": "translated",
             "value": "System changes cannot be monitored."
+          }
+        }
+      }
+    },
+    "Name": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Name"
+          }
+        }
+      }
+    },
+    "Übersicht": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Overview"
+          }
+        }
+      }
+    },
+    "Backup-Pläne": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Backup Plans"
+          }
+        }
+      }
+    },
+    "Speicherziele": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Destinations"
+          }
+        }
+      }
+    },
+    "Aktivität": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Activity"
+          }
+        }
+      }
+    },
+    "Hintergrunddienst": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Background service"
+          }
+        }
+      }
+    },
+    "Hintergrunddienst nicht aktiv": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Background service inactive"
+          }
+        }
+      }
+    },
+    "Hintergrunddienst nicht verfügbar": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Background service unavailable"
+          }
+        }
+      }
+    },
+    "Aktiviere den Hintergrunddienst, damit MacKopia Backups ausführen kann.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enable the background service so MacKopia can run backups."
+          }
+        }
+      }
+    },
+    "Hintergrunddienst aktivieren": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enable background service"
+          }
+        }
+      }
+    },
+    "Anmeldeobjekte öffnen…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open Login Items…"
+          }
+        }
+      }
+    },
+    "Erneut verbinden": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reconnect"
+          }
+        }
+      }
+    },
+    "Festplattenvollzugriff öffnen…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open Full Disk Access…"
+          }
+        }
+      }
+    },
+    "Neuer Plan…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New Plan…"
+          }
+        }
+      }
+    },
+    "Jetzt sichern": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Back Up Now"
+          }
+        }
+      }
+    },
+    "Stoppen": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stop"
+          }
+        }
+      }
+    },
+    "Beginn": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Started"
+          }
+        }
+      }
+    },
+    "Ergebnis": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Result"
+          }
+        }
+      }
+    },
+    "Noch keine Sicherungen": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No backups yet"
+          }
+        }
+      }
+    },
+    "Starte dein erstes Backup über „Jetzt sichern“.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Start your first backup with “Back Up Now”."
+          }
+        }
+      }
+    },
+    "Backup läuft": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Backup running"
+          }
+        }
+      }
+    },
+    "Backup wird vorbereitet": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preparing backup"
+          }
+        }
+      }
+    },
+    "Letztes erfolgreiches Backup": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last successful backup"
+          }
+        }
+      }
+    },
+    "Noch kein erfolgreiches Backup": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No successful backup yet"
+          }
+        }
+      }
+    },
+    "Bearbeiten…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Edit…"
+          }
+        }
+      }
+    },
+    "Noch kein Backup-Plan": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Backup Plan yet"
+          }
+        }
+      }
+    },
+    "Erstelle deinen ersten Plan.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Create your first plan."
+          }
+        }
+      }
+    },
+    "Berechtigungen": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Permissions"
+          }
+        }
+      }
+    },
+    "Der Quellenzugriff wird vor jedem Backup geprüft. Nicht bestätigte Zugriffe bleiben gesperrt.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Source access is checked before every backup. Unconfirmed access remains blocked."
+          }
+        }
+      }
+    },
+    "Lokales Speicherziel": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Local Destination"
+          }
+        }
+      }
+    },
+    "Einrichtung": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Setup"
+          }
+        }
+      }
+    },
+    "Neu anlegen": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Create New"
+          }
+        }
+      }
+    },
+    "Vorhandenes verbinden": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connect Existing"
+          }
+        }
+      }
+    },
+    "Speicherziel": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Destination"
+          }
+        }
+      }
+    },
+    "Auswählen…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose…"
+          }
+        }
+      }
+    },
+    "Wähle einen leeren Ordner für dein neues Speicherziel.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose an empty folder for your new destination."
+          }
+        }
+      }
+    },
+    "Quelle": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Source"
+          }
+        }
+      }
+    },
+    "Quelle auswählen…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose Source…"
+          }
+        }
+      }
+    },
+    "Backup-Passwort": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Backup password"
+          }
+        }
+      }
+    },
+    "Passwort bestätigen": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirm password"
+          }
+        }
+      }
+    },
+    "Passwort generieren": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Generate password"
+          }
+        }
+      }
+    },
+    "Passwort anzeigen": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show password"
+          }
+        }
+      }
+    },
+    "Mindestens 12 Zeichen. Bewahre dein Passwort an einem sicheren Ort auf.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "At least 12 characters. Keep your password in a safe place."
+          }
+        }
+      }
+    },
+    "Ohne dieses Passwort sind deine Backups unwiederbringlich verloren.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Without this password, your backups are irretrievably lost."
+          }
+        }
+      }
+    },
+    "Abbrechen": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cancel"
+          }
+        }
+      }
+    },
+    "Einrichten": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Set Up"
+          }
+        }
+      }
+    },
+    "Noch nicht ausgewählt": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not selected"
+          }
+        }
+      }
+    },
+    "Backup-Plan aktiv": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Backup Plan enabled"
+          }
+        }
+      }
+    },
+    "Quellen": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sources"
+          }
+        }
+      }
+    },
+    "Aufbewahrung": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retention"
+          }
+        }
+      }
+    },
+    "Ausgewogen": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Balanced"
+          }
+        }
+      }
+    },
+    "Platzsparend": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Space Saving"
+          }
+        }
+      }
+    },
+    "Maximum": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Maximum"
+          }
+        }
+      }
+    },
+    "Eigene": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Custom"
+          }
+        }
+      }
+    },
+    "Backups werden manuell gestartet. Automatische Zeitpläne folgen im nächsten Entwicklungsblock.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Backups start manually. Automatic schedules will follow in the next development stage."
+          }
+        }
+      }
+    },
+    "Speichern": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save"
+          }
+        }
+      }
+    },
+    "Entfernen": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remove"
+          }
+        }
+      }
+    },
+    "Quelle entfernen": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remove Source"
+          }
+        }
+      }
+    },
+    "Quelle hinzufügen…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add Source…"
+          }
+        }
+      }
+    },
+    "Erfolgreich": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Successful"
+          }
+        }
+      }
+    },
+    "Mit Hinweisen abgeschlossen": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Completed with warnings"
+          }
+        }
+      }
+    },
+    "Übersprungen": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skipped"
+          }
+        }
+      }
+    },
+    "Abgebrochen": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cancelled"
+          }
+        }
+      }
+    },
+    "Fehlgeschlagen": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Failed"
+          }
+        }
+      }
+    },
+    "Aktion erforderlich": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Action required"
+          }
+        }
+      }
+    },
+    "MacKopia öffnen": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open MacKopia"
+          }
+        }
+      }
+    },
+    "Quellenzugriff nicht bestätigt. Erlaube MacKopia den Festplattenvollzugriff und versuche es erneut. Fehlen die Safari-Testdaten, kann der Zugriff noch nicht bestätigt werden.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Source access unconfirmed. Allow Full Disk Access for MacKopia and try again. If the Safari probe data is missing, access cannot yet be confirmed."
+          }
+        }
+      }
+    },
+    "Konfiguration nicht lesbar. Backups bleiben gesperrt. Prüfe die Konfigurationssicherung.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Configuration unreadable. Backups remain blocked. Check the configuration backup."
+          }
+        }
+      }
+    },
+    "Schlüsselbund nicht verfügbar. Entsperre deinen Schlüsselbund und versuche es erneut.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keychain unavailable. Unlock your keychain and try again."
+          }
+        }
+      }
+    },
+    "Ein Vorgang läuft bereits. Warte bis zum Abschluss.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "An operation is already running. Wait for it to finish."
+          }
+        }
+      }
+    },
+    "Speicherziel oder Quelle nicht verfügbar. Prüfe Laufwerk, Ordner, freien Speicher und Backup-Passwort. Nach einem abgebrochenen Anlegen kannst du das vorhandene Ziel verbinden.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Destination or source unavailable. Check the drive, folders, free space and backup password. After interrupted creation, you can connect the existing destination."
+          }
+        }
+      }
+    },
+    "Eingaben ungültig. Prüfe Namen, Quellen und Speicherziel.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invalid input. Check the name, sources and destination."
+          }
+        }
+      }
+    },
+    "Backup nicht abgeschlossen. Prüfe Speicherziel und Berechtigungen und versuche es erneut.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Backup incomplete. Check the destination and permissions and try again."
+          }
+        }
+      }
+    },
+    "Hintergrunddienst nicht aktiv. Aktiviere den Dienst oder verbinde dich erneut. Prüfe nach einer unterbrochenen Einrichtung zuerst den aktuellen Stand.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Background service inactive. Enable the service or reconnect. After interrupted setup, check the current state first."
+          }
+        }
+      }
+    },
+    "Dienstanfrage fehlgeschlagen.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Service request failed."
+          }
+        }
+      }
+    },
+    "Weiteres Speicherziel einrichten": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Set Up Another Destination"
+          }
+        }
+      }
+    },
+    "Konfigurationssicherung wiederherstellen…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Restore Configuration Backup…"
+          }
+        }
+      }
+    },
+    "Konfiguration wiederherstellen?": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Restore configuration?"
+          }
+        }
+      }
+    },
+    "Wiederherstellen": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Restore"
+          }
+        }
+      }
+    },
+    "Die letzte gültige Sicherung ersetzt die aktuelle Konfiguration. Deine Backups bleiben erhalten.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The last valid backup replaces the current configuration. Your backups are preserved."
           }
         }
       }

@@ -3,8 +3,13 @@ import Foundation
 import Security
 
 package actor KeychainStore: SecretStore {
-    private let accessGroup: String
+    private let accessGroup: String?
     private let backend: any KeychainBackend
+
+    /// Agent-only login Keychain path for locally signed distributions without a team or entitlement.
+    package init() { accessGroup = nil; backend = SecurityKeychainBackend() }
+
+    init(backend: any KeychainBackend) { accessGroup = nil; self.backend = backend }
 
     package init(teamIdentifier: String) throws {
         try self.init(teamIdentifier: teamIdentifier, backend: SecurityKeychainBackend())
@@ -35,7 +40,7 @@ package actor KeychainStore: SecretStore {
         var result = backend.perform(.update, item: item, value: value.data)
         if result.status == errSecItemNotFound {
             result = backend.perform(.add, item: item, value: value.data)
-            // Another process in the shared group may have created the item after our first update.
+            // Another cooperating process may have created the item after our first update.
             if result.status == errSecDuplicateItem {
                 result = backend.perform(.update, item: item, value: value.data)
             }

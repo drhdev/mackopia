@@ -9,6 +9,7 @@ license_dir="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/Kopia"
 /usr/bin/ditto "${source_dir}/kopia" "${helper_dir}/kopia"
 /usr/bin/ditto "${source_dir}/LICENSE" "${license_dir}/LICENSE"
 /usr/bin/ditto "${source_dir}/README.md" "${license_dir}/README.md"
+/usr/bin/ditto "${SRCROOT}/Config/kopia-version.json" "${license_dir}/kopia-version.json"
 if [[ "${CODE_SIGNING_ALLOWED:-NO}" == "YES" ]]; then
     identity="${EXPANDED_CODE_SIGN_IDENTITY:--}"
     if [[ "$identity" == "-" ]]; then

@@ -6,7 +6,7 @@ struct AgentApp: App {
 
     var body: some Scene {
         MenuBarExtra("MacKopia", systemImage: "externaldrive.badge.timemachine") {
-            AgentStatusView()
+            AgentStatusView().environment(delegate.runtime)
         }
         .menuBarExtraStyle(.window)
     }

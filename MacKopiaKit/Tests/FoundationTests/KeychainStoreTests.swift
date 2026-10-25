@@ -26,6 +26,33 @@ struct KeychainStoreTests {
         #expect(try SecretValue(data: Data(count: 65_536)).data.count == 65_536)
     }
 
+    @Test func agentLoginKeychainUsesNoTeamGroupOrDataProtectionAndNoAuthenticationUI() async throws {
+        let item = KeychainItem(accessGroup: nil, account: UUID().uuidString)
+        let query = SecurityKeychainBackend.query(item: item)
+        #expect(query[kSecAttrAccessGroup as String] == nil)
+        #expect(query[kSecUseDataProtectionKeychain as String] == nil)
+        #expect(query[kSecAttrSynchronizable as String] as? Bool == false)
+        #expect((query[kSecUseAuthenticationContext as String] as? LAContext)?.interactionNotAllowed == true)
+        #expect(query[kSecAttrAccess as String] == nil)
+        let attributes = SecurityKeychainBackend.attributes(value: Data([1]), dataProtection: false)
+        #expect(attributes[kSecAttrAccessible as String] == nil)
+        let backend = RecordingKeychain([.init(status: errSecItemNotFound), .init(status: errSecSuccess)])
+        let store = KeychainStore(backend: backend)
+        try await store.write(SecretValue(data: Data(UUID().uuidString.utf8)), for: SecretRef())
+        #expect(backend.calls.map(\.operation) == [.update, .add])
+        #expect(backend.calls.allSatisfy { $0.item.accessGroup == nil })
+    }
+
+    @Test func agentKeychainDenialNeverFallsBackToFilesOrAnotherQuery() async throws {
+        let backend = RecordingKeychain([.init(status: errSecAuthFailed)])
+        let store = KeychainStore(backend: backend)
+        await #expect(throws: SecretStoreError.accessDenied) {
+            try await store.write(SecretValue(data: Data(UUID().uuidString.utf8)), for: SecretRef())
+        }
+        #expect(backend.calls.count == 1)
+        #expect(backend.calls.first?.item.accessGroup == nil)
+    }
+
     @Test func missingTeamNeverFallsBackToAnotherKeychain() throws {
         for identifier in ["", "com.example", "abcdef1234", "ABCDEFGHI", "ABCDEFGHIJK", "ABCD.12345", "ABCD\0EF123"] {
             #expect(throws: SecretStoreError.invalidConfiguration) { try KeychainStore(teamIdentifier: identifier) }

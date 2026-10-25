@@ -1,9 +1,14 @@
 import AgentProtocol
 import AppKit
+import BackupEngine
 import OSLog
+import Observation
 
+@Observable
 final class AgentAppDelegate: NSObject, NSApplicationDelegate {
-    private let server = AgentPingServer()
+    let runtime = AgentRuntimeStore()
+    private let server = AgentServiceServer()
+    private var service: LocalBackupService?
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "MacKopia", category: "XPC")
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -13,12 +18,50 @@ final class AgentAppDelegate: NSObject, NSApplicationDelegate {
                     throw AgentServiceError.invalidIdentity
                 }
                 let identity = try AgentServiceIdentity(appBundleID: String(agentID.dropLast(".Agent".count)))
-                try await server.start(identity: identity)
-                logger.info("Authenticated XPC listener started")
+                let app = Bundle.main.bundleURL.deletingLastPathComponent().deletingLastPathComponent()
+                    .deletingLastPathComponent().deletingLastPathComponent()
+                struct Pin: Decodable { let version: String }
+                let pin = try JSONDecoder().decode(
+                    Pin.self, from: Data(contentsOf: app.appending(path: "Contents/Resources/Kopia/kopia-version.json"))
+                )
+                let service = try LocalBackupService(
+                    executable: app.appending(path: "Contents/Helpers/kopia"),
+                    home: FileManager.default.homeDirectoryForCurrentUser,
+                    temporary: FileManager.default.temporaryDirectory,
+                    expectedVersion: pin.version)
+                self.service = service
+                try await service.start()
+                try await server.start(identity: identity) { command in
+                    switch command {
+                    case .state(let revision): return try await service.state(after: revision)
+                    case .setup(let name, let destination, let source, let password, let create):
+                        try await service.setup(
+                            name: name, destination: destination, source: source, password: password, create: create)
+                    case .createPlan(let name, let repositoryID, let source):
+                        try await service.createPlan(name: name, repositoryID: repositoryID, source: source)
+                    case .recoverConfiguration: try await service.recoverConfiguration()
+                    case .savePlan(let plan): try await service.savePlan(plan)
+                    case .run(let id): try await service.run(id)
+                    case .stop(let id): try await service.stop(id)
+                    }
+                    return try await service.state()
+                }
+                runtime.observe(service)
+                logger.info("Authenticated backup service started")
             } catch {
-                // Static classification only: never forward arbitrary system error descriptions.
-                logger.error("Authenticated XPC listener unavailable; check signing and LaunchAgent registration")
+                runtime.unavailable = true
+                logger.error("Backup service unavailable; check installation and service permissions")
             }
         }
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        Task {
+            runtime.stopObserving()
+            await server.stop()
+            await service?.shutdown()
+            sender.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
     }
 }
