@@ -9,7 +9,7 @@ public struct AgentServiceRegistration {
 
     public init(identity: AgentServiceIdentity) {
         service = SystemAgentService(service: .agent(plistName: identity.plistName))
-        validateSignature = { try AgentSigningIdentity.requireTeamSignature(signingIdentifier: identity.appBundleID) }
+        validateSignature = { _ = try AgentSigningIdentity.peerRequirement(identity: identity, role: .app) }
     }
 
     // Internal injection is only for tests; the public initializer always verifies the running signature.

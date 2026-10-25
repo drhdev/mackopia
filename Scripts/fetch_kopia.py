@@ -55,7 +55,7 @@ def run(*arguments):
 
 
 def sign_binary(binary):
-    # Signing is deferred until explicitly enabled for a future release/build.
+    # The app build enables local ad-hoc signing; standalone fixture setup can opt out.
     if os.environ.get("CODE_SIGNING_ALLOWED", "NO") == "YES":
         run("/usr/bin/codesign", "--force", "--sign", "-", "--options", "runtime", str(binary))
         run("/usr/bin/codesign", "--verify", "--strict", str(binary))
@@ -66,36 +66,26 @@ def main():
     version = pin["version"]
     cache = ROOT / "Vendor/kopia" / version
     cache.mkdir(parents=True, exist_ok=True)
-    archives = {}
-    for architecture, upstream in (("arm64", "arm64"), ("amd64", "x64")):
-        name = "kopia-" + version + "-macOS-" + upstream + ".tar.gz"
-        archive = cache / name
-        fetch_archive(
-            "https://github.com/kopia/kopia/releases/download/v" + version + "/" + name,
-            archive,
-            pin["sha256"][architecture],
-        )
-        archives[architecture] = archive
+    name = "kopia-" + version + "-macOS-arm64.tar.gz"
+    archive = cache / name
+    fetch_archive(
+        "https://github.com/kopia/kopia/releases/download/v" + version + "/" + name,
+        archive, pin["sha256"]["arm64"],
+    )
     with tempfile.TemporaryDirectory(prefix="assemble-", dir=cache) as temporary:
         staging = Path(temporary)
-        for architecture, archive in archives.items():
-            extract_member(archive, "kopia", staging / architecture)
         binary = staging / "kopia"
-        run("/usr/bin/lipo", "-create", str(staging / "arm64"), str(staging / "amd64"), "-output", str(binary))
+        extract_member(archive, "kopia", binary)
         binary.chmod(0o755)
         architectures = subprocess.check_output(["/usr/bin/lipo", "-archs", str(binary)], text=True).split()
-        if set(architectures) != {"arm64", "x86_64"}:
-            raise ValueError("Kopia universal binary has unexpected architectures")
-        # The enclosing app signs the helper with its own identity when embedding it.
+        if architectures != ["arm64"]:
+            raise ValueError("Kopia binary must contain only the supported arm64 architecture")
         sign_binary(binary)
         for name in ("LICENSE", "README.md"):
-            extract_member(archives["arm64"], name, staging / name)
-            extract_member(archives["amd64"], name, staging / (name + ".amd64"))
-            if (staging / name).read_bytes() != (staging / (name + ".amd64")).read_bytes():
-                raise ValueError("Kopia license files differ between architectures")
+            extract_member(archive, name, staging / name)
         for name in ("kopia", "LICENSE", "README.md"):
             os.replace(staging / name, cache / name)
-    print("Verified Kopia " + version + " (arm64 + x86_64): " + str(cache / "kopia"))
+    print("Verified Kopia " + version + " (arm64): " + str(cache / "kopia"))
 
 
 if __name__ == "__main__":

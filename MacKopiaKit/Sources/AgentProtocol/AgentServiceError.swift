@@ -27,7 +27,7 @@ public enum AgentServiceError: Error, LocalizedError, CustomDebugStringConvertib
     public var debugDescription: String {
         switch self {
         case .invalidIdentity: "Invalid application bundle identifier"
-        case .signingRequired: "Valid team signature and exact signing identifier required"
+        case .signingRequired: "Valid bundle signature and pinned peer code identity required"
         case .unavailable: "XPC service unavailable"
         case .timedOut: "XPC ping deadline exceeded"
         case .incompatibleProtocol: "Agent protocol version mismatch"

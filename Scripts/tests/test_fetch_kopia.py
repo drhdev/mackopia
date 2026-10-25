@@ -1,5 +1,6 @@
 """Fail-closed archive verification tests; no network or user repositories."""
 
+import contextlib
 import hashlib
 import importlib.util
 import io
@@ -28,6 +29,36 @@ class ArchiveTests(unittest.TestCase):
                 self.assertEqual(command.call_count, 2)
                 self.assertEqual(command.call_args_list[0].args[:4], ("/usr/bin/codesign", "--force", "--sign", "-"))
                 self.assertEqual(command.call_args_list[1].args[:3], ("/usr/bin/codesign", "--verify", "--strict"))
+
+    def test_main_uses_only_verified_arm64_archive_and_preserves_output_on_wrong_architecture(self):
+        for architecture in ("arm64", "x86_64"):
+            with self.subTest(architecture=architecture), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                (root / "Config").mkdir()
+                cache = root / "Vendor/kopia/test"
+                cache.mkdir(parents=True)
+                archive = cache / "kopia-test-macOS-arm64.tar.gz"
+                with tarfile.open(archive, "w:gz") as tar:
+                    for name, value in (("kopia", b"native binary"), ("LICENSE", b"license"), ("README.md", b"readme")):
+                        member = tarfile.TarInfo("release/" + name)
+                        member.size = len(value)
+                        tar.addfile(member, io.BytesIO(value))
+                pin = {"version": "test", "sha256": {"arm64": hashlib.sha256(archive.read_bytes()).hexdigest()}}
+                (root / "Config/kopia-version.json").write_text(FETCH.json.dumps(pin))
+                (cache / "kopia").write_bytes(b"previous binary")
+                with patch.object(FETCH, "ROOT", root), patch.object(FETCH.urllib.request, "urlopen") as network:
+                    with patch.object(FETCH.subprocess, "check_output", return_value=architecture):
+                        with patch.object(FETCH, "sign_binary"), contextlib.redirect_stdout(io.StringIO()):
+                            if architecture == "arm64":
+                                FETCH.main()
+                                self.assertEqual((cache / "kopia").read_bytes(), b"native binary")
+                                self.assertEqual((cache / "LICENSE").read_bytes(), b"license")
+                            else:
+                                with self.assertRaisesRegex(ValueError, "only the supported arm64"):
+                                    FETCH.main()
+                                self.assertEqual((cache / "kopia").read_bytes(), b"previous binary")
+                    network.assert_not_called()
+                self.assertFalse(any("amd64" in item.name or "x64" in item.name for item in cache.iterdir()))
 
     def test_modified_cache_is_rejected_without_network(self):
         with tempfile.TemporaryDirectory() as temporary:

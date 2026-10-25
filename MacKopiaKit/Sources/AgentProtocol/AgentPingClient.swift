@@ -1,3 +1,4 @@
+import LightweightCodeRequirements
 import XPC
 
 public actor AgentPingClient {
@@ -11,12 +12,12 @@ public actor AgentPingClient {
 
     public func ping() async throws -> AgentPingReply {
         try Task.checkCancellation()
-        try AgentSigningIdentity.requireTeamSignature(signingIdentifier: identity.appBundleID)
+        let requirement = try AgentSigningIdentity.peerRequirement(identity: identity, role: .app)
         let session: XPCSession
         do {
             session = try XPCSession(
                 machService: identity.machServiceName,
-                requirement: .isFromSameTeam(andMatchesSigningIdentifier: identity.agentBundleID)
+                requirement: .codeRequirement(requirement)
             )
         } catch { throw AgentServiceError.unavailable }
         defer { session.cancel(reason: "Ping completed") }

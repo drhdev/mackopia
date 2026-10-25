@@ -7,13 +7,18 @@ Shared instructions for **every** coding agent working in this repository (Claud
 
 ## 1. What this project is
 
-MacKopia is a native macOS backup app (Swift 6.2, SwiftUI, **macOS 26 Tahoe+**) that uses the bundled
+MacKopia is a native **macOS 27-only, Apple-silicon** backup app using the latest stable Xcode, its Swift compiler and SwiftUI SDK, and the bundled
 [Kopia](https://kopia.io) CLI/server as its engine. Goal: *Time Machine simple, Arq reliable*.
 
 - **Source of truth for scope, architecture and phases:** [`docs/PROJEKT.md`](docs/PROJEKT.md) (German).
   Read the relevant section **before** you start a task. If code and spec disagree, the spec wins — or you update the spec
   in the same change and add a row to its decision log (§17).
-- **Current progress / who is doing what:** [`docs/STATUS.md`](docs/STATUS.md). Update it at the end of every work session.
+- **Current progress / who is doing what:** [`docs/STATUS.md`](docs/STATUS.md), a compact restart document.
+  **Implemented baseline:** [`docs/IMPLEMENTIERUNG.md`](docs/IMPLEMENTIERUNG.md). Update both after each substantial work block.
+- Start with these instructions, compact status, PROJEKT.md §14 and only the spec sections/source files relevant to the next block.
+  Never load the full historical log or full spec by default. Historical evidence lives in `docs/history/`.
+- `continue coding` means execute the next substantial deliverable from §14 autonomously, including integration and documentation;
+  continue through internal subtasks without asking for another `continue`. Context compaction is a checkpoint, not completion.
 - UI language: German (development language) + English, via String Catalog. Code, comments, commits, identifiers: **English**.
   Specs in `docs/` are German.
 
@@ -57,7 +62,7 @@ App/                   UI app target (SwiftUI). Features/<Feature>/{Views, Store
 Agent/                 Background agent target (LSUIElement): engine host, XPC server, MenuBarExtra
 MacKopiaKit/           Local Swift package — ALL logic. Modules: BackupDomain, KopiaCLI, KopiaServer, BackupEngine,
                        Persistence, Secrets, SystemIntegration, AgentProtocol, TestSupport
-Scripts/               fetch-kopia.sh, sign-and-notarize.sh, make-appcast.sh
+Scripts/               fetch-kopia.sh, embed-kopia.sh, future release packaging/appcast scripts
 Config/                xcconfigs, kopia-version.json
 Vendor/                downloaded kopia binaries (git-ignored, produced by Scripts/fetch-kopia.sh)
 ```
@@ -69,29 +74,31 @@ Allowed third-party dependencies: **Sparkle 2, GRDB** (optionally `swift-subproc
 
 ## 4. Commands
 
-> Some of these exist only after Phase 0. If a command is missing, create it as part of Phase 0 — do not invent alternatives.
+> Run the relevant checks at substantial block/phase boundaries according to §5, not after every small edit.
 
 ```bash
-./Scripts/fetch-kopia.sh                                  # fetch + verify + lipo the pinned kopia (cached)
-swift test --package-path MacKopiaKit                     # unit + contract tests (fast, run constantly)
+./Scripts/fetch-kopia.sh                                  # fetch + verify pinned arm64 Kopia (cached)
+swift test --package-path MacKopiaKit                     # package suite, including available integration tests
 swift test --package-path MacKopiaKit --filter Integration   # integration tests against the real kopia
 xcodebuild -scheme MacKopia -destination 'platform=macOS' build
-xcodebuild -scheme MacKopia -destination 'platform=macOS' test   # incl. UI smoke tests
+xcodebuild -scheme MacKopia -destination 'platform=macOS' test   # bundle/signature tests; UI smoke when implemented
 swift format lint --recursive --strict App Agent MacKopiaKit     # must be clean
 swift format --in-place --recursive App Agent MacKopiaKit
 ```
 
-Before you call a task done: format, `swift test` green, Xcode build green with **zero warnings** in our code.
+Before a code block is complete, run its required verification once on the final code state, with **zero new compiler warnings**.
+Documentation-only blocks need document/link/diff checks, not Swift/Xcode rebuilds. See §5 for the test cadence.
 
 ---
 
 ## 5. Collaboration between agents (Claude Code ↔ Codex)
 
-- **One task = one branch = one PR.** Branch names: `<agent>/<phase>-<topic>`, e.g. `claude/p1-kopia-process`, `codex/p5-plan-editor`.
+- **One substantial deliverable = one branch = one PR.** Branch names: `<agent>/<phase>-<topic>`, e.g. `claude/p1-kopia-process`, `codex/p5-plan-editor`.
   Humans use `feat/…`, `fix/…`. Never push directly to `main` except for the initial repository bootstrap.
 - **Claim work before starting:** add yourself to the "In progress" table in `docs/STATUS.md` (task, branch, files/modules touched).
   Do not start work on files another open task has claimed; pick something else or coordinate via the PR.
-- Keep PRs small and reviewable (aim < 400 changed lines excluding fixtures/generated files). One logical change per commit.
+- Keep commits logical and PRs reviewable. Do not turn an arbitrary line-count target into unintegrated adapters or user-visible
+  microtasks. A coherent multi-module feature may exceed 400 lines; organize its review by behavior and affected modules.
 - **Commits:** Conventional Commits — `feat(engine): …`, `fix(kopia-server): …`, `test: …`, `docs: …`, `chore: …`, `refactor: …`.
   Imperative mood, body explains *why*. Add the attribution trailer your harness requires.
 - **Cross-review:** a PR authored by one agent should preferably be reviewed by the other agent or a human before merge.
@@ -102,9 +109,43 @@ Before you call a task done: format, `swift test` green, Xcode build green with 
 - Never rewrite shared history (`push --force` on `main` or someone else's branch). Rebase only your own branch.
 - If you are unsure about a product or UX decision, **ask the user** instead of guessing; record the answer in §17.
 
+### Autonomous blocks, verification and context
+
+- Follow the outcome-based phases in PROJEKT.md §14. Build complete usable behavior, not one helper per user turn.
+  Do not reopen the historical Phase-0 gate or wait on unrelated release checks before implementing independent work.
+- Plan briefly in the same working turn, then implement all authorized dependent steps. Ask only for unresolved consequential
+  product decisions, destructive actions, new dependencies/entitlements or a real external blocker; continue independent work.
+- User-confirmed on 2026-10-25: targeted diagnosis is allowed inside a large block.
+  Write meaningful tests alongside logic, but batch execution: during a block, compile or run a narrowly targeted test only to
+  resolve concrete uncertainty, reproduce a bug or diagnose a failure. No automatic full-suite cycle after each type/file/adapter.
+- At a substantial code-block or phase boundary: format/lint, one full package run (real temporary Kopia integration included when
+  engine/process code or its configuration changed), and one Xcode `build test` when app/agent/build/IPC paths are affected.
+  Run Release/signature/packaging checks when those paths changed or at release preparation. Do not rerun unchanged Python spikes,
+  integration scenarios or whole suites already covered by the same final state. Repeat only after relevant changes or failures.
+- Never defer a known data-loss/secret/authentication issue to save tokens. Block only the affected live operation while fixing or
+  recording a real permission/environment dependency; do not weaken assertions, fake evidence or label untested behavior verified.
+- Manual FDA/registration/Gatekeeper/A11y/hardware checks form a separate evidence ledger, not a global development lock.
+  Record owner, affected function, exact next action and last evidence; perform them once the integrated path exists.
+- Keep STATUS.md approximately ≤120 lines and IMPLEMENTIERUNG.md approximately ≤160 lines. They describe current state, not a
+  growing transcript. Archive old session narratives with an index; never erase evidence. Keep detailed logs in files, return summaries.
+- Each checkpoint records: phase/deliverable, implemented and wired behavior, important files/API boundaries, verification with
+  code state/toolchain, actual open risks, and one executable next assignment with finish criteria and required spec sections.
+  Update normative architecture and decisions in PROJEKT.md as needed; don't duplicate session narratives there.
+- Before context gets large, finish a coherent checkpoint, persist this handoff and proceed using the compact documents after
+  compaction. Do not ask the user to open a new chat merely to continue. Do not claim unlimited context or background execution.
+
 ---
 
 ## 6. Swift & architecture standards
+
+**Platform & toolchain**
+- Support macOS 27.x on native arm64 only; minimum deployment target 27.0. No macOS 26/Intel/Rosetta compatibility work,
+  older-OS fallback transports, deprecated APIs or availability branches below the supported target.
+- Use the latest stable Xcode and its bundled Swift/SwiftUI/macOS SDK. Current verified baseline: Xcode 27.1, Swift compiler 6.4,
+  Swift 6 language mode, macOS 27 SDK. SwiftUI has no independently selected version. Do not switch to beta/RC automatically.
+  Record toolchain upgrades at block boundaries; keep reproducible dependencies and the pinned Kopia version intact.
+- Prefer current native system APIs where they simplify behavior, improve efficiency or accessibility. No speculative framework,
+  entitlement, background mode, App Intent or architectural rewrite without a concrete feature need. Preserve working module boundaries.
 
 **Language & concurrency**
 - Swift 6 language mode, strict concurrency `complete`. App + Agent targets use `Default Actor Isolation = MainActor`.
@@ -142,7 +183,7 @@ Before you call a task done: format, `swift test` green, Xcode build green with 
 ## 7. Design, UX and look & feel (macOS-native standard)
 
 The app must feel like it was made by Apple: calm, obvious, trustworthy. When in doubt, copy what **System Settings, Finder,
-Time Machine and Mail** do on macOS 26, and follow the [Human Interface Guidelines](https://developer.apple.com/design/human-interface-guidelines/).
+Time Machine and Mail** do on macOS 27, and follow the [Human Interface Guidelines](https://developer.apple.com/design/human-interface-guidelines/).
 
 ### 7.1 Principles
 1. **Status first.** The user must answer "Am I safe?" within one second: overview + menu bar show a clear state
@@ -167,7 +208,7 @@ Time Machine and Mail** do on macOS 26, and follow the [Human Interface Guidelin
 - System panels: `NSOpenPanel`/`.fileImporter`, `QLPreviewPanel` (Quick Look), `NSWorkspace` for "Show in Finder".
 - Menu bar: `MenuBarExtra` with `.menuBarExtraStyle(.window)`; template SF Symbol icon (monochrome), state via symbol variant.
 
-### 7.3 Liquid Glass (macOS 26)
+### 7.3 Liquid Glass (macOS 27)
 - Let the system apply Liquid Glass to toolbars, sidebars, sheets, menus and controls. **Do not** paint custom backgrounds,
   materials or gradients behind them, do not hide the toolbar background, do not fake glass.
 - Use `.glassEffect` / `GlassEffectContainer` only for a rare custom floating control (e.g. the progress panel accessory), never for content.
@@ -181,7 +222,7 @@ Time Machine and Mail** do on macOS 26, and follow the [Human Interface Guidelin
   no custom brand palette in the UI chrome. Status colors: green = OK, yellow/orange = warning, red = critical — **always paired with
   an icon and text** (never color alone). Light, dark and "Increase Contrast" must all look correct.
 - **Icons:** SF Symbols only (consistent rendering mode, usually `.hierarchical`), with `.symbolEffect` for running states
-  (respects Reduce Motion automatically). App icon follows the macOS 26 icon grid (Icon Composer, layered for glass).
+  (respects Reduce Motion automatically). App icon follows the macOS 27 icon grid (Icon Composer, layered for glass).
 - **Spacing & layout:** system default padding and spacing; no magic numbers except multiples of 4. Minimum window size such that
   nothing truncates in German (German strings are ~30 % longer — test with the longest language). Remember window size/position
   and sidebar selection (`@SceneStorage`).
@@ -200,7 +241,7 @@ Time Machine and Mail** do on macOS 26, and follow the [Human Interface Guidelin
 - Every control has a meaningful label; icon-only buttons have `.help()` **and** `.accessibilityLabel`.
 - Progress exposes `accessibilityValue` ("41 Prozent, noch etwa 18 Minuten"); status badges read their state in words.
 - Supports VoiceOver, Full Keyboard Access, Dynamic Type sizes available on macOS, Reduce Motion, Reduce Transparency,
-  Increase Contrast. Verify with Accessibility Inspector before each phase closes.
+  Increase Contrast. Verify with Accessibility Inspector in the integrated UI/release audit; record any unperformed manual checks without blocking unrelated implementation.
 
 ### 7.7 Copy & localization
 - All user-facing strings go through `Localizable.xcstrings` (German source, English complete). Use `String(localized:)` / `LocalizedStringKey`;
@@ -227,7 +268,7 @@ Time Machine and Mail** do on macOS 26, and follow the [Human Interface Guidelin
 - Error message pattern: **Title** (what happened, ≤ 6 words) · **Body** (why + consequence, 1–2 sentences) · **Action button**.
   Example: „Speicherziel nicht verfügbar“ · „Das Laufwerk „Tresor“ ist nicht angeschlossen. Das nächste Backup startet automatisch, sobald es verbunden ist.“ · [OK].
 
-### 7.8 Design review checklist (every UI PR)
+### 7.8 Design review checklist (integrated UI blocks)
 - [ ] Only system components, no custom chrome/backgrounds behind glass
 - [ ] Light + Dark + Increase Contrast screenshots attached to the PR (German **and** English)
 - [ ] No truncation at minimum window size in German
@@ -250,13 +291,13 @@ Time Machine and Mail** do on macOS 26, and follow the [Human Interface Guidelin
 
 ## 9. Definition of Done
 
-A task is done only when **all** apply:
+A substantial implementation block is complete when **all** apply; release readiness is tracked separately:
 1. Behaviour matches `docs/PROJEKT.md` (or the spec was updated in the same PR with a §17 entry).
-2. Tests added/updated; `swift test` and `xcodebuild test` green; `swift format lint` clean; zero new warnings.
-3. UI changes: design checklist §7.8 satisfied; previews exist.
+2. Tests added/updated and relevant block-boundary verification from §5 passed; lint clean and zero new compiler warnings. Pure docs do not require code rebuilds.
+3. UI changes: previews and relevant automated checks exist; the integrated design checklist §7.8 is assessed, with unperformed manual audit items explicitly tracked for Phase 5/6.
 4. Engine/IPC/secret changes: security checklist §8 satisfied.
 5. User-visible strings localized (DE + EN).
-6. `docs/STATUS.md` updated (progress, next steps, gotchas).
+6. Compact `docs/STATUS.md` and `docs/IMPLEMENTIERUNG.md` updated; changed architecture/plan reflected in PROJEKT.md.
 7. You actually ran/verified it. Report honestly what you did **not** verify.
 
 ## 10. Don'ts
