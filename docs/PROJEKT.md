@@ -1,15 +1,18 @@
 # MacKopia – Projektbeschreibung & Umsetzungsleitfaden
 
-> **Arbeitstitel:** MacKopia · **Status:** Spezifikation v1.0 · **Stand:** 2026-10-23
-> **Zielgruppe dieses Dokuments:** Coding-Agents und Entwickler, die die App schrittweise umsetzen.
+> **Arbeitstitel:** MacKopia · **Status:** Spezifikation v2.0 · **Stand:** 2026-10-25
+> **Zielgruppe dieses Dokuments:** Coding-Agents und Entwickler, die integrierte Produktphasen umsetzen.
 > Dieses Dokument ist die **verbindliche Quelle** für Architektur, Entscheidungen und Abnahmekriterien.
 > Abweichungen werden hier dokumentiert (Abschnitt 17 „Entscheidungslog“), nicht stillschweigend im Code.
+> **Neustarteinstieg:** [STATUS.md](STATUS.md), [IMPLEMENTIERUNG.md](IMPLEMENTIERUNG.md), dann §14
+> und die relevanten Fachabschnitte. Aktuell: Phase 1, Package-Fundament vorhanden, produktive lokale Verdrahtung offen.
+> Vollständige Vorgeschichte nicht als Startkontext laden.
 
 ---
 
 ## 0. Kurzfassung
 
-MacKopia ist eine native macOS-App (Swift 6.2, SwiftUI, macOS 26 Tahoe+), die [Kopia](https://kopia.io) als
+MacKopia ist eine native App mit aktuellem Swift und SwiftUI, ausschließlich für macOS 27 auf Apple Silicon, die [Kopia](https://kopia.io) als
 Backup-Engine nutzt und daraus ein **Time-Machine-einfaches, Arq-zuverlässiges** Backup-Produkt macht:
 
 - **Backup-Pläne**: Mehrere Pläne mit eigenen Quellen, Zielen, Zeitplänen, Aufbewahrungsregeln und Ausschlüssen.
@@ -19,7 +22,7 @@ Backup-Engine nutzt und daraus ein **Time-Machine-einfaches, Arq-zuverlässiges*
 - **Sicher**: Passwort ausschließlich im Schlüsselbund, verschlüsselte lokale Kopia-API mit Zertifikats-Pinning,
   signierte XPC-Kommunikation, Wiederherstellungs-Kit.
 - **Wiederherstellen**: Finder-artiger Snapshot-Browser, Quick Look, Wiederherstellen einzelner Dateien oder ganzer Ordner.
-- **Vertrieb**: Developer ID, notarisiert, Auto-Updates via Sparkle 2, Kopia-Binary im Bundle mitgeliefert.
+- **Vertrieb**: außerhalb des App Store ohne Apple-Konto, lokale Ad-hoc-Signaturen und bewusste Gatekeeper-Freigabe; Auto-Updates via Sparkle 2, Kopia-Binary im Bundle mitgeliefert.
 - **Sprachen**: Deutsch (Primär) + Englisch über String Catalog.
 
 ---
@@ -28,14 +31,14 @@ Backup-Engine nutzt und daraus ein **Time-Machine-einfaches, Arq-zuverlässiges*
 
 | Ursprüngliche Idee | Entscheidung | Begründung |
 |---|---|---|
-| macOS 15 „Golden Gate“ | **macOS 26 Tahoe als Mindestversion** (Entwicklung/Test auf macOS 27) | macOS 15 heißt „Sequoia“. macOS 26 bringt Liquid Glass, aktuelle SwiftUI-APIs und die neue Swift-XPC-API mit Peer-Requirements. |
-| `/opt/homebrew/bin/kopia` nutzen | **Kopia im App-Bundle mitliefern** (`Contents/Helpers/kopia`), signiert und notarisiert, Version festgelegt | Reproduzierbar, kein Homebrew-Update kann die App zerstören, keine Abhängigkeit von der Installation. Eigener Pfad nur als „Experten“-Option. |
+| macOS 15 „Golden Gate“ | **Ausschließlich macOS 27, natives arm64** | Nutzerentscheidung 2026-10-25: keine Alt-OS-/Intel-/Rosetta-Kompatibilität; aktuelle SDK-Anbindungen direkt nutzen. |
+| `/opt/homebrew/bin/kopia` nutzen | **Kopia im App-Bundle mitliefern** (`Contents/Helpers/kopia`), lokal ad-hoc signiert, Version festgelegt | Reproduzierbar, kein Homebrew-Update kann die App zerstören, keine Abhängigkeit von der Installation. Eigener Pfad nur als „Experten“-Option. |
 | Ein `BackupManager` als zentrales `@Observable` | **Schichtenarchitektur**: Engine im Agent (Actors), UI-State als kleine `@Observable`-Stores pro Feature | Ein Gott-Objekt skaliert nicht und ist nicht testbar. Backups müssen ohne UI laufen. |
 | Nur `Process` + stdout parsen | **Hybrid**: privater `kopia server` (REST/JSON) für Snapshots, Fortschritt, Browsing, Restore; direkte CLI-Aufrufe mit `--json` für Einrichtung/Wartung | Strukturierter Fortschritt statt fragilem Text-Parsing (so macht es auch KopiaUI). |
 | „Pause“ hält den Prozess an | **Pause = sauberer Abbruch mit Checkpoint; Fortsetzen = neuer Lauf, der dank Deduplizierung bereits Übertragenes überspringt** | Kopia kennt kein echtes Pausieren. `SIGSTOP` führt bei Netzwerkzielen zu Timeouts. Kopias inhaltsadressierter Speicher macht Neustarts billig. |
 | „Stop ohne Datenkorruption“ | Abbruch über die Kopia-API (`sources/cancel`), Eskalation SIGINT → SIGTERM → SIGKILL nur als Notfall | Kopia schreibt Content-Blobs unveränderlich und das Snapshot-Manifest erst am Ende. Ein Abbruch korrumpiert das Repository nie, er hinterlässt höchstens einen „unvollständigen“ Snapshot. |
 | Passwort-Feld mit Autofill (Enpass) | `SecureField` mit `.textContentType(.password)` bzw. `.newPassword`, Einfügen per ⌘V, Speicherung **nur im Schlüsselbund** | Funktioniert mit macOS-Passwörter-App und mit Enpass (Autofill/Einfügen). Passwort niemals in UserDefaults, Dateien, Logs oder argv. |
-| Sandbox deaktivieren | **App Sandbox aus, Hardened Runtime an**, Festplattenvollzugriff (FDA) per Onboarding | Ohne Sandbox kein Mac App Store, deshalb Developer ID. Hardened Runtime ist für die Notarisierung Pflicht. |
+| Sandbox deaktivieren | **App Sandbox aus, Hardened Runtime an**, Festplattenvollzugriff (FDA) per Onboarding | Vertrieb außerhalb des Mac App Store ohne Apple-Konto; lokale Ad-hoc-Signaturen und Hardened Runtime bleiben Pflicht. |
 | Laufwerk „im Hintergrund prüfen“ (Polling) | **Ereignisgesteuert**: `NSWorkspace`-Mount-Notifications + DiskArbitration, Identifikation über Volume-UUID | Kein Polling, keine Verwechslung bei gleichen Volume-Namen. |
 
 ---
@@ -47,7 +50,7 @@ Backup-Engine nutzt und daraus ein **Time-Machine-einfaches, Arq-zuverlässiges*
 | **Time Machine** | Null-Konfiguration, „angesteckt = gesichert“, Status in der Menüleiste, Auswerfen blockieren während eines Backups | Onboarding mit sinnvollen Vorgaben; Trigger „Laufwerk verbunden“; DiskArbitration-Unmount-Approval; Menüleisten-Status mit „Letztes Backup: vor 12 Min.“ |
 | **Arq** | Getrennter Hintergrund-Agent, Backup-Pläne, regelmäßige Validierung, E-Mail/Notification-Berichte, „Pause für 1 Stunde“, Wiederherstellungs-Kit | Agent via `SMAppService`; Plan-Modell; geplante `snapshot verify`-Läufe und Test-Restores; Pause mit Dauer; PDF-Recovery-Kit |
 | **Backblaze** | Sorglos-Modus, sehr klare Warnungen („Seit 14 Tagen nicht gesichert“) | Gesundheitsampel pro Plan mit Schwellwerten und Mitteilungen |
-| **Vorta (Borg-GUI)** | Profile, Keychain-Speicherung, Bedingungen (Netzteil, WLAN-Liste, keine teuren Netze), Pre-/Post-Skripte | Ausführungsbedingungen pro Plan; Hook-Skripte (Phase 2, optional) |
+| **Vorta (Borg-GUI)** | Profile, Keychain-Speicherung, Bedingungen (Netzteil, WLAN-Liste, keine teuren Netze), Pre-/Post-Skripte | Ausführungsbedingungen pro Plan; Hook-Skripte (Version 2, optional) |
 | **Backrest (restic-WebUI)** | Strikte Trennung **Repository ↔ Plan**, Operations-Log/Historie, Hooks, geplante Prune/Check-Läufe | Datenmodell `Repository` getrennt von `BackupPlan`; Aktivitätsverlauf in SQLite; Wartung zeitgesteuert |
 | **Pika Backup (Borg-GNOME)** | Radikal einfache UI, Laufwerk über UUID, „Zeitplan mit Bedingungen“ | Wenige, klare Bildschirme; Expertenoptionen hinter „Erweitert“ |
 | **KopiaUI** | Wrapping von `kopia server` mit TLS + Zufallspasswort + `--shutdown-on-stdin`; ein Config-File pro Repository | Gleiches Startprotokoll, aber nativ, mit Zertifikats-Pinning und Agent |
@@ -79,11 +82,11 @@ Backup-Engine nutzt und daraus ein **Time-Machine-einfaches, Arq-zuverlässiges*
 
 ### 3.2 Bewusst NICHT in 1.0 (dokumentiert, Architektur vorbereitet)
 
-- APFS-Snapshots als konsistente Quelle (benötigt privilegierten Helper für `mount_apfs -s`) → Phase 2.
-- Pre-/Post-Hook-Skripte (Kopia-Actions) → Phase 2.
+- APFS-Snapshots als konsistente Quelle (benötigt privilegierten Helper für `mount_apfs -s`) → Version 2.
+- Pre-/Post-Hook-Skripte (Kopia-Actions) → Version 2.
 - Kopia-Repository-Server (Multi-User), Google Drive, Azure, rclone → bei Bedarf.
-- Mount eines Snapshots im Finder (`/api/v1/mounts`, WebDAV) → Phase 2 (nice to have).
-- iOS/iPadOS-Companion, Widgets, App Intents/Kurzbefehle → Phase 2 (App Intents sind jedoch einfach und empfohlen).
+- Mount eines Snapshots im Finder (`/api/v1/mounts`, WebDAV) → Version 2 (nice to have).
+- iOS/iPadOS-Companion, Widgets, App Intents/Kurzbefehle → Version 2 (App Intents sind jedoch einfach und empfohlen).
 
 ---
 
@@ -91,23 +94,32 @@ Backup-Engine nutzt und daraus ein **Time-Machine-einfaches, Arq-zuverlässiges*
 
 | Bereich | Festlegung |
 |---|---|
-| Sprache | Swift 6.2, **Strict Concurrency = complete**, Swift-6-Sprachmodus |
-| UI | SwiftUI (macOS 26 SDK), AppKit nur gezielt (`NSOpenPanel`, `QLPreviewPanel`, `NSWorkspace`) |
+| Sprache | Neuester stabiler Swift-Compiler der Xcode-Toolchain (aktuell 6.4), **Strict Concurrency = complete**, Swift-6-Sprachmodus |
+| UI | Aktuelles SwiftUI aus dem macOS-27-SDK, AppKit nur gezielt (`NSOpenPanel`, `QLPreviewPanel`, `NSWorkspace`) |
 | Isolation | App-Targets: `Default Actor Isolation = MainActor` (Approachable Concurrency). Pakete: nonisolated by default, explizite Actors |
-| Mindest-OS | macOS 26.0, Universal Binary (arm64 + x86_64) |
-| Build | Xcode 26+ Projekt mit App-Target + Agent-Target; **gesamte Logik in lokalem Swift Package** `MacKopiaKit` |
+| Zielplattform | Nur macOS 27.x, Deployment Target 27.0, natives arm64; keine Intel-/Rosetta-/Alt-OS-Matrix |
+| Build | Neueste stabile Xcode-Version (aktuell 27.1), macOS-27-SDK, mit App-Target + Agent-Target; **gesamte Logik in lokalem Swift Package** `MacKopiaKit` |
 | Tests | Swift Testing (`@Test`, `#expect`), XCUITest für Smoke-Tests, Integrationstests gegen echtes Kopia |
 | Persistenz | Konfiguration: versioniertes JSON (Codable, atomare Writes). Historie: SQLite via **GRDB** (Migrationen) |
 | Logging | `os.Logger` (Subsystem `<bundle-id>`, Kategorien pro Modul), Kopia-Logs in eigenem Log-Verzeichnis |
 | Abhängigkeiten | **Nur**: Sparkle 2, GRDB. Optional `swift-subprocess` (swiftlang), wenn ≥ 1.0 verfügbar; sonst eigener `Process`-Wrapper |
-| Signierung | Developer ID Application, Hardened Runtime, Notarisierung via `notarytool`, Stapling |
+| Signierung / Vertrieb | Außerhalb des App Store, ohne Apple-Developer-Konto; lokale Ad-hoc-Signaturen und Hardened Runtime. Keine verpflichtende Developer ID oder Notarisierung; bewusste Gatekeeper-Freigabe durch den Nutzer |
 | Lizenz Kopia | Apache 2.0 → `LICENSE`/`NOTICE` von Kopia im Bundle und im „Über“-Fenster |
 
-**Bundle-IDs (Platzhalter, vor Phase 0 festlegen):**
+Die jeweils neueste stabile Toolchain wird am Anfang eines größeren Arbeitsblocks geprüft und
+als reproduzierbarer Stand festgehalten; keine automatische Beta-/RC-Installation. SwiftUI gehört zum
+SDK, nicht zu einer separat versionierten Abhängigkeit. Swift 6 ist der Sprachmodus, 6.4 der Compilerstand.
+Aktuell nachgewiesen: Xcode 27.1 (27A9275), Swift 6.4, macOS-27-SDK.
+Quellen: [Apple Xcode](https://apps.apple.com/us/app/xcode/id497799835),
+[Apple macOS-27-Kompatibilität](https://support.apple.com/en-us/127455).
+Die aktuelle Support-/Testmatrix enthält nur macOS 27; keine künstliche Laufzeitsperre für spätere
+macOS-Versionen. Eine Erweiterung der offiziell geprüften Matrix ist eine bewusste spätere Entscheidung.
+
+**Bundle-IDs (vorerst bestätigte Platzhalter):**
 - App: `com.example.MacKopia`
 - Agent: `com.example.MacKopia.Agent`
 - XPC-Mach-Service: `com.example.MacKopia.Agent.xpc`
-- Keychain-Access-Group: `$(TeamID).com.example.MacKopia.shared`
+- Keychain: ausschließlich Hintergrunddienst; keine Team-ID-/Shared-Access-Group-Voraussetzung (§8).
 
 ---
 
@@ -118,7 +130,7 @@ Backup-Engine nutzt und daraus ein **Time-Machine-einfaches, Arq-zuverlässiges*
 ```
 ┌──────────────────────────────┐        XPC (Mach-Service,         ┌─────────────────────────────────────┐
 │  MacKopia.app  (UI)          │  ◄──── Peer-Requirement: ──────►  │  MacKopia Agent.app  (LSUIElement)  │
-│  • Hauptfenster (Setup,      │        same Team ID)              │  • Engine (Scheduler, Trigger,      │
+│  • Hauptfenster (Setup,      │        pinned code hash)              │  • Engine (Scheduler, Trigger,      │
 │    Pläne, Restore, Verlauf)  │                                   │    Job-Queue, Preflight, Health)    │
 │  • kann jederzeit beendet    │                                   │  • MenuBarExtra (Status, Aktionen)  │
 │    werden                    │                                   │  • Mitteilungen                     │
@@ -163,7 +175,7 @@ MacKopiaKit/
 │   ├── BackupEngine/      # Scheduler, TriggerMonitor (Volumes/Netzwerk/Energie), JobQueue, Preflight, HealthEvaluator,
 │   │                      #   MaintenanceCoordinator, VerifyCoordinator, PolicyTranslator (Domain → Kopia-Policy)
 │   ├── Persistence/       # ConfigStore (JSON, atomar, versioniert, Migration), HistoryStore (GRDB)
-│   ├── Secrets/           # KeychainStore (Data-Protection-Keychain, Access Group), SecretRef
+│   ├── Secrets/           # agentverwalteter Login-Keychain (keine Team-ID/Access Group), SecretRef
 │   ├── SystemIntegration/ # VolumeMonitor (DiskArbitration/NSWorkspace), NetworkMonitor (NWPathMonitor),
 │   │                      #   PowerMonitor (IOKit), SleepAssertion, FullDiskAccessProbe, SMBMounter (NetFS), Notifications
 │   ├── AgentProtocol/     # XPC-Protokoll/Transport, Versionierung, appseitige SMAppService-Grenze
@@ -198,17 +210,17 @@ mackopia/
 │   │   └── Settings/
 │   ├── Components/                      # wiederverwendbare Views (StatusBadge, ByteCountText, ProgressPanel …)
 │   ├── Resources/Localizable.xcstrings, Assets.xcassets
-│   └── MacKopia.entitlements
+│   └── Resources/Localizable.xcstrings
 ├── Agent/                               # Target "MacKopia Agent"
 │   ├── AgentApp.swift                   # @main, MenuBarExtra, startet Engine + XPC-Listener
 │   ├── XPCServer/                       # Listener, Peer-Prüfung, Request-Routing
 │   ├── MenuBar/
 │   ├── LaunchAgent/Agent.plist            # Build-Template; Name/Identitäten aus App-Bundle-ID
-│   └── Agent.entitlements
+│   └── Resources/Localizable.xcstrings
 ├── Scripts/
-│   ├── fetch-kopia.sh                   # lädt gepinnte Kopia-Version, prüft SHA256, erzeugt Universal Binary (lipo)
-│   ├── sign-and-notarize.sh
-│   └── make-appcast.sh
+│   ├── fetch-kopia.sh                   # lädt gepinnte Kopia-Version, prüft SHA256, übernimmt ausschließlich geprüftes arm64-Binary
+│   ├── embed-kopia.sh                    # lokale Ad-hoc-Signaturen und Agent-Plist
+│   └── make-appcast.sh                   # geplant in Phase 6
 ├── Config/
 │   ├── kopia-version.json               # { "version": "0.23.1", "sha256": { "arm64": "…", "amd64": "…" } }
 │   ├── Shared.xcconfig, Debug.xcconfig, Release.xcconfig
@@ -219,7 +231,7 @@ Bundle-Layout der fertigen App:
 ```
 MacKopia.app/Contents/
 ├── MacOS/MacKopia
-├── Helpers/kopia                                  # signiert, Hardened Runtime, gleiche Team-ID
+├── Helpers/kopia                                  # ad-hoc signiert, Hardened Runtime
 ├── Library/LoginItems/MacKopia Agent.app
 ├── Library/LaunchAgents/com.example.MacKopia.Agent.plist
 ├── Frameworks/Sparkle.framework
@@ -236,10 +248,15 @@ MacKopia.app/Contents/
   Bundle: Pfad über das Eltern-Bundle auflösen (`../../../../Helpers/kopia`) und mit `FileManager.fileExists` + Ausführungsrecht prüfen.
 - Beim Agent-Start: `kopia --version` ausführen, Version gegen `kopia-version.json` prüfen. Abweichung → Health-Fehler
   „Kopia-Version unerwartet“ (bei eigenem Pfad nur Warnung).
-- `Scripts/fetch-kopia.sh` (Build-Phase, gecacht): lädt die offiziellen Release-Archive für `darwin-arm64` und `darwin-x64`
-  von GitHub, **verifiziert SHA256 gegen die gepinnten Werte**, erzeugt mit `lipo -create` ein Universal Binary
-  und signiert bei explizit aktivierter Signierung mit `codesign --options runtime --timestamp`. Lokale Entwicklung
-  derzeit mit `CODE_SIGNING_ALLOWED=NO`, ohne explizite Codesign-Aufrufe. Ohne passenden Hash bricht der Build ab.
+- `Scripts/fetch-kopia.sh` (Build-Phase, gecacht): lädt das offizielle Release-Archiv für `darwin-arm64`
+  von GitHub, **verifiziert SHA256 gegen die gepinnten Werte**, übernimmt ausschließlich das geprüfte native arm64-Binary
+  und signiert lokal ad-hoc mit `codesign --sign - --options runtime`, ohne Apple-Konto oder Timestamp-Dienst.
+  App und eingebetteter Agent erhalten ebenfalls lokale Ad-hoc-Signaturen; `CODE_SIGNING_ALLOWED=YES`,
+  manuelle Identität `-`, leere Team-ID und keine automatisch injizierten Basis-Entitlements.
+  `--options runtime` wird explizit gesetzt, weil Xcode bei Ad-hoc-Identität die Runtime-Option
+  sonst trotz `ENABLE_HARDENED_RUNTIME=YES` auslässt. Xcodes separate Debug-Dylib ist deaktiviert:
+  Sie lässt sich ohne gemeinsame Team-ID unter Library Validation nicht laden.
+  Ohne passenden Download-Hash bricht der Build ab.
 - Kopia-Updates sind ein bewusster Vorgang: Version in `kopia-version.json` anheben → Integrationstests → Release.
 - **Niemals** automatisch `kopia repository upgrade` ausführen. Ein Formatupgrade verlangt eine ausdrückliche Bestätigung des Nutzers mit Warnhinweis.
 
@@ -590,7 +607,7 @@ ungeklärten Schreibausgang; vor dem nächsten Versuch wird frisch gelesen. Frem
 im übertragenen Dokument erhalten; verwirft der gepinnte Server unbekannte Felder, schlägt die
 Definitionsnachprüfung fehl. Es gibt keine Zusage, dass Kopia unbekannte Erweiterungen persistiert.
 Der Abgleich startet selbst keine Snapshots und führt keine Aufbewahrungs-/Löschaktion aus.
-Der explizite manuelle Engine-Pfad (§7.5) ruft ihn vor Uploads auf; die Agent-Laufzeitverdrahtung folgt separat.
+Der explizite manuelle Engine-Pfad (§7.5) ruft ihn vor Uploads auf; die Der manuelle Dienstpfad ist über `LocalBackupService` verdrahtet; die automatische Agent-Runtime folgt in Phase 2.
 
 Plan-Metadaten werden auch beim Decoding validiert: nichtleere Quellen-/Triggerlisten, eindeutige Quell-IDs
 und wörtliche Quellpfade pro Plan, gültige Uhrzeiten/Wochentage, positive Intervalle und geordnete positive
@@ -711,7 +728,7 @@ Netzwerkzustandsänderungen prüfen ausschließlich konfigurierte Ziele: SFTP-Ho
 oder SMB-Remount-URL eines Dateisystem-Ziels. Ohne konfigurierten Host/Port entsteht keine Netzwerkanforderung.
 Probes laufen sequenziell; gleiche Ziele samt Kostenrestriktionen teilen ein Ergebnis innerhalb des Ereignisses.
 Unbekannte/gesperrte Kosten-/Beschränkungszustände und noch nicht prüfbare WLAN-Bedingungen verhindern Probes.
-`TCPReachabilityChecker` verwendet die ab macOS 26 verfügbaren strukturierten Network-APIs: TCP-Aufbau mit
+`TCPReachabilityChecker` verwendet die ab macOS 27 direkt verwendeten strukturierten Network-APIs: TCP-Aufbau mit
 End-of-stream ohne Anwendungsbytes oder Zugangsdaten, maximal fünf Sekunden, mit anschließender
 Transportbereinigung. Kosten-/Beschränkungsverbote gelten zusätzlich direkt am Verbindungsparameter.
 Eine erfolgreiche Probe bestätigt weder TLS/Host-Key noch Anmeldung, Speicherplatz oder Quellfreigabe.
@@ -723,6 +740,23 @@ frische Vorabprüfung und den geschützten Engine-Pfad gebunden. Es gibt noch ke
 persistente Trigger-Zustände oder produktive Agent-/XPC-Komposition. Die automatische Engine-Drain-Schleife ist in §7.5 beschrieben.
 
 ### 7.5 Job-Queue & Zustandsmaschine
+
+**Produktiver manueller Phase-1-Pfad:** Genau ein `LocalBackupService` im Hintergrunddienst besitzt
+ConfigStore, HistoryStore, Keychain, Repository-Gate und die Lauf-/Setup-Steuerung. Die App importiert
+weiterhin nur AgentProtocol/BackupDomain. Die lokale Einrichtung erzeugt oder verbindet ein bestehendes
+Dateisystemziel; Anlegen verlangt einen leeren vorhandenen Ordner und mindestens zwölf Passwortzeichen.
+Quelle und Ziel werden bereits bei der Ordnerauswahl an ihre Volume-UUID gebunden und im Dienst vor
+Secrets, Bootstrap und Operation erneut geprüft. Dieselbe lokale Schutzgrenze deckt Setup und Backup ab.
+Die einmal gewählte Snapshot-Identität wird bei weiteren Zielen wiederverwendet.
+
+Anlegen/Verbinden und Konfigurationsänderungen sind gegen aktive Läufe serialisiert. Ein unbekannter
+Schreibausgang entfernt weder Zielinhalte noch möglicherweise gespeicherte Credentials. Weitere Pläne
+verwenden vorhandene Ziele; der Editor ändert Name, Aktivierung, Quellen und Aufbewahrung. Neue Pläne
+haben nur den manuellen Trigger; automatische Runtime/Health/Wartung werden in Phase 2 angeschlossen.
+Konfigurationsfehler sperren die Freigabe; nur die explizit bestätigte Recovery-Anfrage stellt eine gültige
+Sicherung wieder her. Nach Dienstneustart werden verwaiste laufende Historieneinträge als unterbrochen
+abgeschlossen, ohne automatische Wiederholung. Shutdown wartet auf laufende Mutation und Run-Cleanup.
+
 
 ```
             ┌────────┐ trigger  ┌─────────┐ preflight ok ┌─────────┐ alle Quellen ok ┌───────────┐
@@ -756,7 +790,7 @@ Planstand. Direkt vor dem Operations-Callback wird nach allen suspendierenden Vo
 Plan-/Speicherzielgleichheit geprüft. Die Laufkennung wird auf jedem Ausgang erst nach abgeschlossener
 Operations-/Schutzbereinigung freigegeben. Dies ist keine Sperre gegen Konfigurationsänderungen während
 einer bereits gestarteten Operation. Der generische Runner startet selbst keine Prozesse; der folgende
-manuelle Engine-Pfad liefert den konkreten Operations-Callback und wird von der Package-Laufzeit wiederverwendet. Agent-Laufzeitverdrahtung folgt separat.
+manuelle Engine-Pfad liefert den konkreten Operations-Callback und wird von der Package-Laufzeit wiederverwendet. Der manuelle Dienstpfad ist über `LocalBackupService` verdrahtet; die automatische Agent-Runtime folgt in Phase 2.
 
 `ManualBackupEngine` verbindet diesen Runner explizit mit einer Dateisystem-Server-Sitzung: Secret frisch
 auflösen, isolierte reguläre 0600-Konfiguration auf Zielpfad, gespeicherte Identität und deaktivierte Kopia-Actions
@@ -794,7 +828,7 @@ Aktivitätsoberfläche folgen separat.
 Der manuelle Durchstich unterstützt Dateisystem-Ziele und normale bzw. niedrige Prozesspriorität
 (`QOS_CLASS_BACKGROUND` bereits bei `posix_spawn`). Noch nicht verdrahtete explizite Parallelitäts-/Bandbreiten-
 und Auswerfen-Optionen blockieren vor dem Serverstart, statt still ignoriert zu werden. Netzwerkziele,
-Plausibilitätsprüfung/Pinning und XPC-Komposition bleiben den weiteren Batches zugeordnet. Die produktive Quellfreigabe bleibt ohne signierten FDA-/Kindprozessnachweis gesperrt;
+Plausibilitätsprüfung/Pinning und XPC-Komposition bleiben den weiteren Batches zugeordnet. Die produktive Quellfreigabe bleibt ohne FDA-/Kindprozessnachweis mit Ad-hoc-Vertriebsbuild gesperrt;
 der Integrationstest autorisiert ausschließlich selbst erzeugte temporäre Quellen über einen Testadapter.
 
 - **Retry-Strategie** bei transienten Fehlern (Netzwerk, Timeout, Ziel kurz weg): exponentiell 1 → 5 → 15 Min.,
@@ -853,7 +887,7 @@ Cancellation und Laufzeitgeneration erneut geprüft, damit Shutdown keine versp�
 Bestehende Login-/Nachholregeln gelten unverändert; dauerhafte Queue-Arbeit wird wie in §6.6 beschrieben restauriert. Die Konfiguration wird vor
 jeder Queue-Aufnahme/Operation frisch geprüft. Unbestätigte Quellfreigabe bleibt `skipped`, ohne einen
 Server zu öffnen. Kein Agent-/XPC-/UI-Einstieg wurde damit produktiv aktiviert;
-Persistenz noch nicht angenommener Trigger-Evidenz und Retry-Ketten sowie die signierten Systemnachweise bleiben offen.
+Persistenz noch nicht angenommener Trigger-Evidenz und Retry-Ketten sowie die Systemnachweise mit Ad-hoc-Vertriebsbuild bleiben offen.
 
 - Jeder Lauf erzeugt einen `JobRun`-Eintrag in der Historie (Start, Ende, Ergebnis, Statistik, Snapshot-IDs, Fehlerliste,
   Verweis auf Kopia-Logdatei).
@@ -933,6 +967,92 @@ Prüfabsichten, Test-Restore-Ausführung und Wartungskoordination bleiben offen.
 Der Erfolgszeitpunkt wird bereits nach tatsächlichem Kommandoabschluss unter der Reservierung erfasst;
 verzögerte Schutzbereinigung oder Persistenz kann ihn nicht nachträglich hinter eine neuere Prüfung verschieben.
 
+Implementierungsstand Batch 4e: `SnapshotVerificationEngine.testRestore` verwendet dieselbe Reservierung,
+frischen Vorabprüfungen, UUID-/Live-Laufwerksschutz, SleepAssertion und Konfigurationsabgleiche wie Verify.
+`FilesystemTestRestore` liest die gespeicherten Root-Objekte des letzten erfolgreichen vollständigen Laufs;
+es wählt zufällig eine geeignete reguläre Datei unter 50 MB aus den aktuellen Quellen. Die Suche ist auf
+256 Verzeichnisobjekte, 10.000 Einträge und 32 Ebenen je Quelle begrenzt, Prozessausgaben sind weiterhin
+begrenzt. Leere Dateien sind zulässig, Links werden übersprungen. Dateinamen bleiben ausschließlich
+lesende relative Komponenten; ungültige Namen oder Objekt-IDs werden abgewiesen.
+
+Der CLI-Restore schreibt genau eine Objekt-ID unter einen festen lokalen Dateinamen in ein frisches
+0700-Temp-Verzeichnis, mit sämtlichen Overwrite-Optionen deaktiviert, atomarem Schreiben und
+übersprungenen Eigentümer-/Rechte-/Zeitstempelmetadaten (Kopia 0.23.1 erzeugt damit die Temp-Datei als 0600). SHA256 vergleicht Restore und Original
+nur bei passender Snapshot-Größe und mtime (unter einer Mikrosekunde Rundungstoleranz). Original und
+Restore werden über `openat` ohne Symlink-Verfolgung unterhalb ihrer kanonischen Wurzeln geöffnet.
+Geräte-/Inode-/Größe-/mtime-/ctime-Abgleich sowie erneutes Hashen des Originals erkennen Änderungen
+während der Prüfung. Fehlende geeignete Originale oder zwischenzeitliche Änderungen ergeben keinen
+Prüfnachweis. Ein unverändertes Original mit abweichendem Restore ergibt einen festen Fehlernachweis.
+Temporäre Daten werden vor Rückgabe auch bei Prozessfehler oder Abbruch entfernt; Cleanup-Fehler
+können keinen Erfolg liefern. Erfolg/Fehler werden getrennt als `testRestore` gespeichert, standardmäßig
+30 Tage gültig; sie ersetzen keinen Verify-Nachweis. Automatische Prüftermine, persistente laufende
+Prüfabsichten, Anzeige und Agent-/XPC-Komposition bleiben offen.
+
+Implementierungsstand Batch 4f: Der Besitzer kann `AutomaticTestRestore` in die gemeinsame Package-Laufzeit
+injizieren; dessen Engine muss denselben Coordinator und dieselbe Repository-Sperre wie Backups verwenden.
+Nach einem vollständig erfolgreichen, warnungsfreien Backup liest die Laufzeit den letzten abgeschlossenen
+`testRestore`-Nachweis für Plan und Speicherziel. Ohne Nachweis oder ab dessen `dueAt` startet sie den
+bestehenden geschützten Test-Restore. Der Standardabstand beträgt 30 Tage nach einem abgeschlossenen
+Erfolg oder Fehler; Verify-Nachweise verschieben diesen Termin nicht. Eine unentscheidbare Stichprobe
+bleibt ohne Nachweis und kann beim nächsten erfolgreichen Backup erneut versucht werden.
+
+Die serielle Drain-Schleife wartet auf Prüfabschluss und Cleanup, bevor sie das nächste Backup entnimmt.
+Pause (Plan/global), Stopp, Reload und Shutdown brechen die laufende automatische Prüfung ab und warten
+auf deren Bereinigung. Prüffehler und Historienlese-/Schreibfehler melden ausschließlich den festen
+Runtime-Code `testRestoreFailed` samt Plan-UUID; sie starten keine Backup-Retry-Kette. Backup-Historie
+und Prüfhistorie bleiben getrennt. Ohne injizierten Prüfbesitzer startet keine Prüfung. Eigenständige
+Prüftimer ohne vorheriges erfolgreiches Backup, automatische Verify-Stufen, Plan-Optionen und produktive
+Agent-Komposition bleiben offen.
+
+Implementierungsstand Batch 4g: `AutomaticSnapshotVerification` kann zusätzlich in die Package-Laufzeit
+injiziert werden. Nach warnungsfreien erfolgreichen Backups liest sie den letzten `snapshotVerify`-Nachweis
+für Plan und Speicherziel und führt ohne Nachweis oder ab `dueAt` die geschützte 1-Prozent-Prüfung aus
+(Standardgültigkeit sieben Tage). Auch explizite Verify-Nachweise bestimmen diese Fälligkeit.
+Verify läuft seriell vor dem Test-Restore unter demselben Coordinator und derselben Repo-Sperre.
+Die Laufsteuerung bricht die gesamte Prüfnacharbeit ab und wartet auf Cleanup. Verify-Fehler melden nur
+`verificationFailed` samt Plan-UUID, ohne Backup-Retry; ein unabhängiger Test-Restore bleibt möglich,
+ohne den Verify-Fehler in Health zu verdecken. Ohne injizierten Besitzer keine automatische Prüfung.
+Monatliche 10-Prozent-Stufe mit eigenem dauerhaftem Stufennachweis, Plan-Optionen, eigenständige
+Prüftimer, Wartungskoordination und produktive Agent-Komposition bleiben offen.
+
+Implementierungsstand Batch 4h: Verify-Ergebnisse enthalten zusätzlich den tatsächlich angeforderten
+Dateianteil (`filesPercent`, 1–100); ältere Payloads bleiben ohne Anteil lesbar und zählen nicht als
+Monatsnachweis. Test-Restore trägt keinen Anteil. Die art-/plan-/zielbezogene Historienabfrage kann
+nach Mindestanteil filtern; auch ein neuerer kleiner Verify verdrängt so keinen größeren Nachweis.
+Es werden keine historischen Prozentwerte erfunden und keine vorhandenen Zeilen umgeschrieben.
+
+Die automatische Nacharbeit liest beide Stufen aus dauerhafter Historie. Ohne Nachweis von mindestens
+10 Prozent oder ab 30 Tagen nach dessen Abschluss startet vorrangig eine 10-Prozent-Prüfung. Sie
+ersetzt eine gleichzeitig fällige Wochenprüfung. Sonst startet die 1-Prozent-Prüfung spätestens sieben
+Tage nach dem letzten Verify (bei früherem `dueAt` bereits dann). Auch explizite Prüfungen mit mindestens
+10 Prozent zählen monatlich; Nachweise ohne bekannten Anteil zählen nur wöchentlich. Erfolge und Fehler
+bestimmen den jeweiligen Wiederholungsabstand; Abbruch und abgewiesener Preflight verschieben keinen
+Termin. Automatische Verify-Ergebnisse behalten sieben Tage Health-Gültigkeit, auch nach der größeren
+Stichprobe; der unabhängige Monatstermin ergibt sich aus Abschlusszeit und gespeichertem Anteil.
+Plan-Optionen, eigenständige Prüftimer, persistente laufende Prüfabsichten, Wartungskoordination und
+produktive Agent-Komposition bleiben offen.
+
+Implementierungsstand Batch 4i: `MaintenanceCoordinator.inspect` liest für einen aktivierten
+Dateisystem-Plan die Wartungsauskunft unter derselben Repo-Reservierung, frischem Preflight,
+UUID-/Live-Laufwerksschutz und SleepAssertion wie Backup und Verify. Die Konfiguration wird
+vor und nach dem Lesen abgeglichen. `FilesystemMaintenanceInspection` validiert die isolierte
+Verbindung und löst das Passwort frisch aus dem Schlüsselbund; `KopiaMaintenanceReader` führt
+nur `maintenance info --json` mit begrenzter Laufzeit und Ausgabe aus. Die Auswertung vergleicht
+den Owner exakt mit der gespeicherten Override-Identität und unterscheidet fehlenden/fremden Owner,
+deaktivierte Full-Wartung, fälligen und zukünftigen Termin. Kopia 0.23.1 liefert Intervalle als
+Nanosekunden und bei noch fehlendem Termin Go-Zero-Time (Jahr 1); dieser Termin ist fällig.
+Defekte Pflichtfelder werden abgewiesen, Rohdiagnosen aus der Wartungshistorie nicht übernommen.
+Das Ergebnis ist nur eine Beobachtung und kein später wiederverwendbares Ausführungsrecht.
+Implementierungsstand Batch 4j: `MaintenanceCoordinator.runDueFull` liest Owner und Termin frisch
+innerhalb derselben Reservierung und startet ausschließlich bei eigenem Owner, aktivierter Full-Wartung
+und erreichtem Termin. Konfigurationsabgleich vor dem Lesen, vor dem Start und nach Prozessende;
+SleepAssertion und Live-Laufwerksschutz bleiben bis zum Cleanup aktiv. Der injizierte
+`KopiaMaintenanceRunner` führt nur `maintenance run --full` aus, ohne Force-/Safety-Overrides,
+mit isolierter Umgebung, begrenzter Ausgabe und sechs Stunden Timeout. Fehlender Prüfzugang,
+fremder/fehlender Owner, deaktivierte oder noch nicht fällige Wartung starten keinen Prozess.
+Ein erfolgreicher CLI-Abschluss ist noch keine dauerhafte Wartungsevidenz.
+Owner-Übernahme, automatische Runtime-Anbindung und Wartungshistorie folgen separat.
+
 ### 7.7 Health-Bewertung
 
 Pro Plan eine Ampel mit Begründung (in Übersicht, Menüleiste, Mitteilungen):
@@ -962,10 +1082,15 @@ produktive Agent-/XPC-Komposition bleiben weitere Batch-4/5-Aufgaben.
 
 ## 8. Sicherheit
 
-1. **Secrets** (Repo-Passwort, S3-Keys, SFTP-Passwort/Key-Passphrase) ausschließlich im **Data-Protection-Keychain**
-   (`kSecUseDataProtectionKeychain = true`), `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`, Access Group geteilt zwischen
-   App und Agent (Entitlement `keychain-access-groups`). `kSecAttrSynchronizable = false` (Standard; Option „über iCloud-Schlüsselbund
-   synchronisieren“ nur bewusst, Phase 2).
+1. **Secrets** (Repo-Passwort, S3-Keys, SFTP-Passwort/Key-Passphrase) ausschließlich im **Keychain**,
+   verwaltet durch den Hintergrunddienst; die UI übergibt Secrets per authentifiziertem XPC.
+   `AgentKeychainStore` verwendet die modernen SecItem-Operationen im lokalen Login-Keychain ohne
+   Team-ID, Data-Protection-Flag oder Access Group. Die Standard-ACL gehört der anlegenden signierten
+   Anwendung; niemals eine All-App-ACL setzen. `LAContext.interactionNotAllowed` verhindert Dialoge im
+   Hintergrund; fehlender/gesperrter Zugriff blockiert ohne Ersatzdatei. Der alte explizite Team-Adapter
+   bleibt ausschließlich für seine bestehenden Vertragsprüfungen erhalten. Update-Stabilität der
+   Ad-hoc-Identität ist ein gesonderter Release-Nachweis, keine Zusage dieses Adapters.
+   `kSecAttrSynchronizable = false` (Standard; Synchronisierung nur nach bewusster Produktentscheidung).
 2. **Keine Secrets** in: UserDefaults, config.json, Logs, Crash-Reports, argv, Diagnose-Export, XPC-Events. Die UI sendet ein
    Secret genau einmal per XPC an den Agent (beim Setzen) und bekommt es nie zurück. Ausnahme: „Passwort anzeigen“ im
    Wiederherstellungs-Kit, nur nach lokaler Authentifizierung (`LAContext`, `.deviceOwnerAuthentication`).
@@ -977,16 +1102,19 @@ produktive Agent-/XPC-Komposition bleiben weitere Batch-4/5-Aufgaben.
 4. **Wiederherstellungs-Kit**: PDF (via `ImageRenderer`/`NSPrintOperation`) mit Repository-Typ, Pfad/URL, Benutzer@Host-Identität,
    Kopia-Version, Datum, optional dem Passwort sowie einer Kurzanleitung, wie man **ohne MacKopia** mit der Kopia-CLI wiederherstellt.
    Angeboten nach dem Anlegen, jederzeit erneut abrufbar.
-5. **XPC-Härtung**: Swift-XPC-API (`XPCListener`/`XPCSession`) mit Peer-Requirement „gleiche Team-ID + exakte Bundle-ID“
-   (`XPCPeerRequirement`, macOS 26) bzw. `NSXPCConnection.setCodeSigningRequirement` als Fallback. Alle Requests validieren
+5. **XPC-Härtung**: Swift-XPC-API (`XPCListener`/`XPCSession`) mit Peer-Requirement aus exakter
+   Signing-ID und CodeDirectory-Hash des jeweiligen Partners im lokal signierten App-Bundle.
+   Eigene laufende Signatur, Bundle-Layout und äußeres Bundle-Siegel werden vor Verbindungsaufbau geprüft.
+   Keine Team-ID erforderlich; kein ungeprüfter Ersatztransport. Das installierte Bundle ist der
+   Vertrauensanker, keine durch Apple bestätigte Herausgeberidentität. Alle Requests validieren
    (Pfade existieren, IDs bekannt, Größen begrenzt). Protokoll versioniert (`protocolVersion` im Handshake; Mismatch → UI fordert Neustart des Agents).
 6. **Lokale Kopia-API**: nur `127.0.0.1`, TLS mit Pinning, Zufallspasswörter pro Start, stirbt mit dem Agent.
-7. **Hardened Runtime** ohne Ausnahmen (keine `disable-library-validation`, kein JIT). Entitlements minimal:
-   App: `keychain-access-groups`; Agent: `keychain-access-groups`. Kein Sandbox-Entitlement.
+7. **Hardened Runtime** ohne Ausnahmen (keine `disable-library-validation`, kein JIT). Keine zusätzlichen
+   Entitlements für Ad-hoc-Vertrieb; keine Team-basierte Keychain-Gruppe, kein Sandbox-Entitlement.
 8. **Festplattenvollzugriff**: Prüfung durch Leseversuch einer TCC-geschützten Datei (z. B. `~/Library/Safari/Bookmarks.plist`,
    Fallback `~/Library/Mail`) **aus dem Agent-Prozess**. Fehlt FDA, führt die UI zu
    `x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles` und zeigt eine Schritt-für-Schritt-Grafik.
-   **Spike (Phase 0)**: verifizieren, welchem Prozess TCC den Zugriff des Kindprozesses `kopia` zuordnet (verantwortlicher Prozess =
+   **Systemnachweis (integrierter Dienst / Release)**: verifizieren, welchem Prozess TCC den Zugriff des Kindprozesses `kopia` zuordnet (verantwortlicher Prozess =
    Agent bzw. dessen Container-App?), und den Onboarding-Text exakt darauf abstimmen.
 9. **SFTP**: Host-Key beim ersten Verbinden anzeigen (Fingerprint), vom Nutzer bestätigen lassen, in einer eigenen `known_hosts`
    pro Repo speichern (`--known-hosts=<datei>`). Keine stillschweigende Akzeptanz.
@@ -1123,8 +1251,16 @@ abgewiesen, FIFO-Öffnung ist nicht blockierend. Inhalte, Eintragsnamen und rohe
 Die Leseabfragen laufen auf einem separaten Actor mit Abbruchprüfung vor/nach den Systemaufrufen; blockierende
 Dateisystemaufrufe selbst sind damit weder unterbrechbar noch zeitlich begrenzt. Kein rekursiver Scan und
 kein Nachweis der Lesbarkeit jedes Nachfahren. Quellenidentität und Live-Schutz bleiben separat erforderlich.
-Die reale TCC-Zuordnung zum signierten Agent/Kopia-Kind ist weiterhin offen (§8/Spike C); dieser Adapter wird
-deshalb noch nicht als Standard verdrahtet. Tests verwenden ausschließlich synthetische temporäre Daten.
+Der produktive Phase-1-Pfad komponiert den Adapter mit `AgentFullDiskAccessProbe`: zusätzlich zum
+Agent-Leseversuch muss das exakt gebündelte Kopia dieselbe nichtleere reguläre Safari-Bookmarks-Datei
+selbst lesen. Kopia 0.23.1 `benchmark compression --algorithms=none --repeat=1` liest den Inhalt vor
+Algorithmusauswahl, arbeitet ohne Repository und gibt keine Inhalte aus. Datei-/Content-Logging ist für
+diese Probe aus; Ausgaben werden begrenzt erfasst und verworfen. Vorprüfung: kein Symlink, höchstens
+1 MiB; Kopias eigener harter Lesedeckel bei gleichzeitigem Dateiwachstum beträgt 128 MiB, Timeout 10 s.
+Fehlende/übergroße Testdatei, Kindprozessfehler oder unklarer Zugriff bleiben `unknown`; der Mail-Fallback
+allein erteilt keine Kindprozessfreigabe. Es gibt keinen gespeicherten FDA-Freischalter. Tests verwenden
+nur synthetische temporäre Daten. Die konkrete Systemeinstellungen-/Update-Zuordnung bleibt separat
+am installierten Dienst manuell nachzuweisen; automatische Leseevidenz wird vor jedem Lauf frisch erhoben.
 
 Der Diagnoseaufruf gibt seine Sperre bei Rückkehr/Fehler frei. Ein späterer Backup-Start muss den gesamten
 Prüf-/Sicherungs-/Cleanup-Lebenszyklus gemeinsam reservieren, die Prüfungen frisch ausführen und die Ziel-/
@@ -1316,6 +1452,24 @@ Byte-/Datumsformatierung ausschließlich mit `ByteCountFormatStyle`, `Date.Forma
 
 ## 12. App ↔ Agent-Protokoll
 
+**Verdrahteter Phase-1-Vertrag (Version 2):** `AgentServiceClient/Server` transportieren begrenzte
+JSON-Daten in einem Codable-XPC-Umschlag. Vor der Domain-Dekodierung gelten 1 MiB für Requests und
+16 MiB für Antworten. Version/UUID korrelieren jede Antwort; Secrets sind nur im Setup-Request zulässig.
+Jede authentifizierte Sitzung nimmt genau einen Request an und sendet die asynchrone Antwort über
+dieselbe Sitzung. Die öffentlichen Produktionskonstruktoren erzwingen weiterhin Code-Hash-Pinning;
+der anonyme Testendpoint existiert ausschließlich im Testtarget.
+
+Implementiert: Zustand, lokales Erzeugen/Verbinden, neuer Plan am vorhandenen Ziel, validiertes Plan-Update,
+explizite Konfigurations-Recovery, manueller Start und Stopp. Zustände enthalten Konfiguration, maximal
+50 jüngste Läufe, aktive Plan-ID, Fortschritt und feste Fehlercodes. `state(after:)` wartet ereignisgesteuert
+auf eine neue Revision (maximal 25 s / acht Beobachter); so transportiert eine neue Momentaufnahme
+State-/Progress-/Run-Ereignisse ohne Idle-Polling. Clientfrist 90 s, Cancellation trennt die Sitzung und
+beendet den zugehörigen Request; ein bereits angenommener Lauf gehört dem Dienst bis zum expliziten Stopp.
+`AgentConnection` lädt nach Reconnect eine vollständige Momentaufnahme; nur fehlgeschlagene Verbindungen
+werden mit fünf Sekunden Abstand erneut versucht. Setup-/Plan-Stores und sichere Previews gehören der UI.
+Die unten genannten weiteren Requests und dedizierten Stores sind Zielumfang der Folgephasen.
+
+
 - Transport: Swift-XPC (`XPCSession`), Nachrichten als `Codable` (gemeinsames Modul `AgentProtocol`).
 - **Requests** (async, mit Ergebnis): `getState`, `listPlans`, `upsertPlan`, `deletePlan`, `listRepositories`, `createRepository`,
   `connectRepository`, `testRepository`, `setSecret`, `runNow(planID)`, `pause(scope, until)`, `resume(scope)`, `stop(planID)`,
@@ -1327,10 +1481,12 @@ Byte-/Datumsformatierung ausschließlich mit `ByteCountFormatStyle`, `Date.Forma
   `ActivityStore`. Views bekommen Stores über `@Environment`. Keine Geschäftslogik in Views.
 - Phase-0-Ping: `AgentPingRequest` mit fester Protokollversion (aktuell 1) und UUID zur Antwortzuordnung;
   unpassende Version/UUID wird abgewiesen. `AgentPingClient` hat eine 5-s-Antwortfrist und Task-Cancellation,
-  `AgentPingServer` akzeptiert nur die exakte App-Signaturidentität desselben Teams. Beide prüfen zusätzlich
-  die eigene gültige Team-Signatur; ad-hoc/unsignierte Builds erhalten keinen ungesicherten Ersatztransport.
+  `AgentPingServer` akzeptiert nur die exakte Signing-ID und den CodeDirectory-Hash der App
+  aus dem geprüften Eltern-Bundle. Der Client pinnt entsprechend den eingebetteten Agent.
+  Beide prüfen ihre laufende Signatur gegen das eigene Bundle; lokale Ad-hoc-Signaturen genügen.
+  Ungültige/unsignierte Bundles erhalten keinen ungesicherten Ersatztransport.
   `AgentServiceRegistration` kapselt explizite Registrierung, Status und den Sprung zu Anmeldeobjekt-Einstellungen.
-  Der Agent startet den Listener beim App-Start. UI-Anbindung sowie echter signierter Ende-zu-Ende-Ping sind noch offen.
+  Der Ping-Vertrag bleibt ein historischer Testbaustein; produktiv startet der Agent den folgenden versionierten Dienstlistener.
 - Ist der Agent nicht erreichbar: UI zeigt Banner „Hintergrunddienst nicht aktiv“ + Button (Registrierung/Neustart über `SMAppService`).
 
 ---
@@ -1351,9 +1507,18 @@ Testdaten-Fixtures: Unicode (NFD/NFC), Leerzeichen/Emoji in Pfaden, 0-Byte-Datei
 Pakete (`.app`, `.photoslibrary`-Dummy), Dateien ohne Leserecht.
 
 ### 13.2 CI (GitHub Actions, macOS-Runner)
-`fetch-kopia` (gecacht) → `swift test` (Package, Unit + Contract) → `xcodebuild test` (App, UI-Smoke) → Integrationstests →
-bei Tag: Archive, Signieren, Notarisieren, DMG, Appcast. `swift format lint --strict` (Apples swift-format aus der Toolchain,
+CI auf `xcode-27` (macOS 27/arm64) mit expliziter stabiler Xcode-Auswahl, aktuell 27.1:
+`fetch-kopia` (gecacht) → Python-Skriptprüfungen → Format → eine Package-Suite inklusive Integration
+→ ein Xcode-`build test`. Läuft auf prüfbereiten PRs, Release-Tags und manuell; veraltete Läufe abbrechen.
+Lange historische Backend-/Server-Spikes nur manuell bei betroffenem Vertrag oder bei Release-Tags, nicht
+redundant bei jedem kleinen Push. Die [Runner-Bezeichnung ist bei GitHub dokumentiert](https://github.blog/changelog/2026-10-15-xcode-27-runner-image-generally-available/).
+
+bei Tag: Archive, lokal ad-hoc signieren, Signaturen prüfen, DMG, Appcast. Keine Apple-Zugangsdaten erforderlich. `swift format lint --strict` (Apples swift-format aus der Toolchain,
 Konfiguration `.swift-format` im Repo) als Pflicht-Check.
+Die Bundle-/Signaturtests laufen als eigenständiges Testbundle außerhalb der Produkt-App.
+Eine Ad-hoc-XCTest-Injektion in die geschützte App scheitert an Library Validation; deshalb
+werden weder Runtime noch Library Validation für Tests gelockert. App, Agent und Kopia
+werden am gebauten Artefakt auf gültige Signatur und gesetztes Runtime-Flag geprüft.
 
 ### 13.3 Code-Regeln für Agents/Entwickler
 - Swift 6 strict concurrency ohne `@unchecked Sendable` (Ausnahmen begründen + Kommentar). Kein `DispatchQueue` in neuem Code
@@ -1367,95 +1532,135 @@ Konfiguration `.swift-format` im Repo) als Pflicht-Check.
 
 ---
 
-## 14. Umsetzungsplan (Phasen mit Abnahmekriterien)
+## 14. Umsetzungsplan – integrierte Produktphasen
 
-> Jede Phase endet mit grünen Tests, lauffähigem Build und einem kurzen Eintrag im Entscheidungslog (Abschnitt 17).
-> **Reihenfolge einhalten**: Die Engine wird vor der UI fertig und getestet (UI ist austauschbar, Datenverlust nicht).
+**Verbindliche Neufassung vom 2026-10-25.** Dieser Plan ersetzt die alte Phase-0-/Batch-Abfolge.
+Vorhandene Kopia-/Engine-/Persistenz-Bausteine werden weiterverwendet, nicht neu geschrieben.
+Der aktuelle Stand und der nächste konkrete Auftrag stehen in [STATUS.md](STATUS.md);
+der kompakte Implementierungsatlas in [IMPLEMENTIERUNG.md](IMPLEMENTIERUNG.md).
+Der [alte Plan](history/PLAN-bis-2026-10-25.md) dient nur zum Verständnis historischer Nachweise.
 
-### Ausführungsbatches für Coding-Agents
+### Arbeitsweise
 
-Die Phasen bleiben fachliche Abnahmekriterien. Implementierungsaufträge bündeln mehrere zusammenhängende
-Bausteine zu einem vollständig verdrahteten, prüfbaren Verhalten. Ein Batch umfasst Implementierung,
-Integration, Fehler-/Abbruchpfade, aussagekräftige Tests und Status-/Hand-off-Notiz. Kein Abschluss nur
-mit einem weiteren unverbundenen Adapter. Bestehende geprüfte Bausteine werden wiederverwendet.
+- Ein Auftrag liefert einen größeren integrierten Funktionsblock samt Fehler-/Abbruchpfaden,
+  Tests und Übergabe. Nicht nach jedem Adapter, Dateityp oder kleinen Testlauf anhalten.
+- Ein `continue coding` setzt den nächsten Auftrag aus STATUS.md bis zu seinem nutzbaren Ergebnis fort.
+  Unteraufgaben werden ohne erneute Nutzerfreigabe verbunden; Kontextkompaktierung ist kein Abschluss.
+- Die Phasen sind Reihenfolge und Zielbilder, keine globale Sperrkette. Fehlt ein Systemnachweis,
+  wird nur die betroffene reale Funktion gesperrt; unabhängige UI-/Engine-Arbeit geht weiter.
+  „Implementiert“, „integriert“, „automatisiert geprüft“ und „manuell geprüft“ bleiben unterscheidbar.
+- Alle Sicherheitsinvarianten aus AGENTS.md bleiben bindend. Ungeprüfte Datenzugriffe, Authentifizierung
+  oder destruktive Funktionen werden nicht bloß zum Abschluss einer Phase freigegeben.
+- Tests während der Umsetzung entstehen mit der Logik; Ausführung erfolgt gebündelt an sinnvollen
+  Block-/Phasengrenzen. Gezielte Reproduktion/Diagnose bei konkretem Fehler bleibt erlaubt (vom Nutzer ausdrücklich bestätigt).
+  Eine vollständige Prüfrunde auf dem finalen Codezustand; keine Wiederholung nach reinen Dokuänderungen.
+- Ausschließlich die gemeinsame Arbeits-/Prüf-/Kontextregel aus AGENTS.md §5 gilt für alle Agents.
+  Kleine Commits bleiben möglich, ohne nach jedem Commit den Nutzer erneut um Fortsetzung zu bitten.
+- Neue Plattform-APIs werden anhand des installierten macOS-27-SDKs ausgewählt. Native Effizienz,
+  Klarheit und Barrierefreiheit sind das Ziel; zusätzliche Frameworks ohne konkreten Bedarf sind es nicht.
 
-| Batch | Zusammenhängender Auftrag | Abnahme des Agent-Laufs |
-|---|---|---|
-| 1 – Policy-Abgleich | Vollständiger Lese-/Merge-/Schreibpfad, effektive Vererbung, Scheduling-Prüfung, Konflikterkennung, Ausschlussresolver | Echte temporäre Kopia-Integration; zweiter Abgleich ohne Write; Konflikte und unwirksame Sollwerte blockieren |
-| 2 – Manueller Backup-Engine-Durchstich | Queue/Preflight/Schutz, Server-Lifecycle, sequenzielle Quellen, Fortschritt/Abbruch, Historie | Zwei Quellen → Lauf → korrekte Historie; Abbruch/Cleanup; byteidentischer Restore im Integrationstest |
-| 3 – Automatische Ausführung | Scheduler, kontinuierliche Volume-/Netzwerk-/Energie-Monitore, Wake-Nachholen, Debounce, Retry, Pause/Resume | Virtuelle Uhr und simulierte Systemereignisse beweisen Ausführung und Unterdrückung |
-| 4 – Vertrauensfunktionen | Plausibilität, Verify, Test-Restore, Wartungskoordination, Health und Mitteilungslogik | Erfolgs-/Fehlerfälle liefern richtige Historie und konkrete Folgeaktionen; keine konkurrierenden Repo-Operationen |
-| 5 – Agent-Laufzeit/Protokoll | Engine-Komposition, vollständige validierte XPC-Requests/Events, Reconnect-Zustand, Shutdown/Cleanup | Request → Engine → Event geprüft; signierte Live-Nachweise separat offen ausweisen |
-| 6 – Lokaler App-Workflow | AgentConnection, Navigation, lokale Einrichtung, Plan-Editor, Übersicht, Fortschritt, Aktivität, Menüleiste | Vollständiger lokaler Nutzerworkflow; DE/EN, Previews und UI-/Accessibility-Abnahme gemäß AGENTS.md |
-| 7 – Wiederherstellung | Snapshot-Tabelle/Filter, Browser/Suche, Quick Look, Restore-Sheet, Fortschritt/Abbruch, Overwrite-Bestätigung | Datei/Ordner/Snapshot mit sicheren Defaults wiederherstellen |
-| 8 – Remote-Ziele, je Backend ein Batch | Authentifizierter create/connect/test-Pfad, sicherer Secret-Transport, Engine-Integration und Assistent | Pro Backend reale Integrations- und Secret-Persistenzprüfung |
-| 9 – Release-Abnahme | Diagnose, Updates, Hilfe, A11y-/Performance-Audit, Signierung/Notarisierung/Packaging | Vollständige Release-Checkliste auf erforderlicher Plattformmatrix |
+### Phase 1 – Nutzbarer lokaler Backup-Workflow (aktiver Auftrag)
 
-Remote-Engine-Batches dürfen nach ihren eigenen Voraussetzungen vorgezogen werden; sie blockieren den
-lokalen Durchstich nicht. Signierte XPC-/Registrierungs-/TCC-Nachweise bleiben gemäß Nutzerentscheidung
-zurückgestellt, ohne unsichere Ersatztransporte. Der Implementierungsstand und die formale Phasenabnahme
-werden im Status getrennt ausgewiesen. Offene Produktentscheidungen (etwa Server-Checkpoint-Intervall)
-bleiben explizit offen; ein Batch ändert sie nicht stillschweigend.
+**Ergebnis:** Die native App kann ein lokales Speicherziel und einen Plan anlegen/verbinden,
+ein Backup auslösen/stoppen und echten Status samt Ergebnis anzeigen; der Dienst besitzt die Engine.
 
-Während eines Batches gezielt prüfen, am Ende alle vorgeschriebenen Format-/Package-/Xcode-Prüfungen.
-Kleine logische Commits und reviewbare PRs bleiben erforderlich; das PR-Größenziel aus AGENTS.md wird
-nicht durch große Agent-Aufträge aufgehoben. Routinemäßige technische Entscheidungen werden im Auftrag
-abgeschlossen; echte Produktentscheidungen und externe Voraussetzungen bilden getrennte Haltepunkte.
+Zusammenhängende Umsetzung:
+- Keychain-Zugriff ohne Team-ID, ausschließlich im Hintergrunddienst; keine Secret-Ersatzdateien.
+- Ein produktiver Runtime-Besitzer im Agent; gemeinsame Repo-Sperren, Konfigurations-/Historienzugriff,
+  Shutdown und vollständiger Cleanup auf Basis der vorhandenen Engine.
+- Validierte versionierte XPC-Requests/Events für Konfiguration, Einrichtung, Laufsteuerung und Status;
+  Code-Hash-Pinning, Größenlimits, Reconnect und klarer Berechtigungs-/Dienststatus.
+- App-weite AgentConnection, Navigation, lokale Einrichtung und Planbearbeitung, Übersicht,
+  Fortschritt, Ergebnis, leere/fehlende-Berechtigungs-/offline- und Fehlerzustände; DE/EN und Previews.
+- SMAppService/FDA aktiv am echten integrierten Pfad prüfen, soweit lokal ohne neue Zustimmung möglich.
+  Erforderliche Nutzeraktionen exakt dokumentieren; mit sicheren Mocks die restliche UI weiterbauen.
 
-### Phase 0 – Fundament & Spikes (Risiken zuerst)
-1. Xcode-Projekt (App + Agent), lokales Package `MacKopiaKit` mit allen Modul-Targets (leer), xcconfigs, Bundle-IDs, Team,
-   Hardened Runtime, Entitlements, String Catalog, swift-format (`.swift-format` liegt bereits im Repo), CI-Grundgerüst.
-2. `Scripts/fetch-kopia.sh` + Build-Phase: Kopia 0.23.1 universal, signiert, unter `Contents/Helpers/kopia`.
-3. **Spike A – Server-Handshake**: Server mit obigem Kommando starten, Handshake-Zeilen parsen, `GET /repo/status` mit
-   Pinning + Basic-Auth. Echte Antworten von `sources`, `snapshots`, `objects`, `tasks`, `estimate`, `restore` als Fixtures speichern.
-4. **Spike B – Abbruch-Semantik**: großen Snapshot starten, `sources/cancel`, prüfen: unvollständiger Snapshot/Checkpoint vorhanden?
-   Zweiter Lauf schneller? Policy-Flag für Checkpoint-Intervall verifizieren.
-5. **Spike C – TCC/FDA**: Agent via `SMAppService` registrieren, `kopia` als Kind starten, geschützten Ordner sichern.
-   Ergebnis: Welcher Eintrag muss in „Festplattenvollzugriff“? Onboarding-Text festlegen.
-6. **Spike D – Secrets via Umgebung**: Für jedes Backend (filesystem, sftp, webdav, s3) verifizieren, wie Secrets ohne argv übergeben werden.
-   Ergebnis: [Spike-D-Bericht](SPIKE-D-SECRETS.md). S3/WebDAV persistieren Backend-Secrets trotz Environment-Übergabe; SFTP hat kein Passwort-Environment-Binding. Folge-Spike: S3 ohne Credential-Felder mit Environment, WebDAV via anonymer Config-Pipe (Backup/Restore + EOF-Shutdown) erfolgreich. WebDAV-`--create-only`, Aufbewahrung/Owner, schnelle Wartung und Wiederverbindung/Restore nach Prozessabsturz inzwischen geprüft; geschützter Symlink-/Lock-Pfad nötig. WebDAV-Pipe-Übergabe für Produktion freigegeben (§6.2/§8); Swift-Integration, S3-Bootstrap und SFTP bleiben offen.
-7. **Spike E – Metadaten**: xattrs/Finder-Tags/ACLs/Ressourcen-Forks nach Restore prüfen.
-**Abnahme:** Leere App + Agent starten, Agent erscheint in der Menüleiste, XPC-Ping UI→Agent funktioniert (Peer-Requirement aktiv),
-Spike-Ergebnisse im Entscheidungslog dokumentiert, Fixtures eingecheckt.
+**Prüfblock am Ende:** Package-Suite inkl. echtem temporärem Backup/Abbruch/Restore-Nachweis,
+Xcode build/test, Format-Lint; ein vertikaler App→XPC→Agent→Engine-Durchstich soweit freigegeben.
+Fehlende Live-Freigaben separat erfassen. Nicht die Engine erst um jede spätere Komfortfunktion erweitern.
+**Einstiegsstellen:** §5–§6, §7.1/§7.3–§7.5, §8–§9, §11–§12; IMPLEMENTIERUNG.md.
 
-### Phase 1 – KopiaCLI & KopiaServer (Package)
-`KopiaProcess`, `KopiaBinaryLocator`, `KopiaCommand`s, Fehler-Mapping (Tabelle Abschnitt 15), `KopiaServerProcess`
-(Start/Handshake/Idle-Stop/Orphan-Cleanup), `KopiaServerClient` (Pinning, DTOs, alle Endpunkte aus 6.4).
-**Abnahme:** Integrationstest legt Dateisystem-Repo an, erstellt Snapshot über den Server, liest Fortschritt, bricht ab,
-setzt fort, listet, browst, stellt eine Datei wieder her (Byte-identisch), führt Verify + Maintenance aus. Falsches Passwort → `.wrongPassword`.
+### Phase 2 – Zuverlässiger täglicher Betrieb
 
-### Phase 2 – Domain, Persistenz, Secrets
-Modelle + Validierung, `ConfigStore` mit Migration v1, `HistoryStore` (GRDB, Schema v1), `KeychainStore`, `PolicyTranslator`.
-**Abnahme:** Unit-Tests für alle Validierungsregeln (Überlappung, Quelle im Ziel, doppelte Quelle pro Repo), Roundtrip/Migration,
-Keychain-Tests (eigene Test-Access-Group), Policy-Abgleich idempotent (zweiter Abgleich = keine Änderung).
+**Ergebnis:** Bestehende Pläne sichern automatisch, zeigen nachvollziehbare Gesundheit und erlauben
+Steuerung aus Fenster und Menüleiste; Termine und Zustände überleben Neustarts.
 
-### Phase 3 – Engine (Agent ohne UI)
-Scheduler, TriggerMonitore, PowerMonitor, NetworkMonitor, SleepAssertion, Preflight, JobQueue mit Zustandsmaschine, Retry,
-Pause/Resume/Stop, Plausibilitätswächter, Maintenance-/Verify-Coordinator, Test-Restore, Health, Notifications, XPC-Server mit vollem Protokoll.
-**Abnahme:** Scheduler-Tests mit virtueller Uhr (inkl. Sleep-/Wake-Nachholen, Zeitzonenwechsel), Engine-Integrationstest:
-Plan mit 2 Quellen → Lauf → Historie korrekt; USB-Simulation (Disk-Image per `hdiutil` erzeugen/mounten/aushängen) → Trigger feuert,
-Unmount-Schutz greift; Fehlerinjektion → Retry-Verhalten korrekt.
+Runtime vollständig mit Scheduler, Volume-/Netzwerk-/Energie-/Wake-Ereignissen und persistenten
+Pausen/Retry/Recovery verbinden. Health, Plausibilitäts-Pinning, wöchentliche/monatliche Verify-Stufen,
+Test-Restore und fällige Wartung samt dauerhafter Evidenz und Mitteilungen integrieren.
+Aktivität, zielbezogene Fehler/Folgeaktionen, relevante Einstellungen und sichere Auswerfen-Optionen
+als zusammenhängende Nutzerwege fertigstellen. Ereignisgetrieben, kein unnötiges Polling;
+Fortschritt begrenzen, Cancellation/Cleanup und SleepAssertions konsistent halten.
 
-### Phase 4 – App-Grundgerüst & Onboarding
-`AgentConnection`, Stores, `NavigationSplitView`-Layout, Übersicht, Onboarding-Assistent komplett (inkl. FDA- und Login-Item-Status,
-Recovery-Kit-PDF), Repository-Assistenten für alle 4 Typen (inkl. SFTP-Host-Key-Bestätigung, S3-Verbindungstest), Import bestehender Kopia-Config.
-**Abnahme:** Frischer Mac-Benutzer gelangt in < 3 Minuten zum ersten laufenden Backup; alle Assistenten haben Fehlerpfade mit Aktionen.
+**Prüfblock:** virtuelle Uhr/Ereignisse/Neustart, gemeinsame Repo-Serialisierung, Fehler-/Pause-/Abbruchpfade,
+ein temporärer Gesamtdurchstich; volle Package-Suite und betroffene Xcode-Prüfung einmal am Blockende.
+**Einstiegsstellen:** §6.6, §7.3–§7.7, §9, §11.3–§11.4, §12.
 
-### Phase 5 – Pläne, Steuerung, Fortschritt, Menüleiste
-Plan-Editor (Quellen inkl. Drag & Drop, Zeitplan, Bedingungen, Aufbewahrung, Ausschlüsse mit Vorschau), ControlGroup,
-ProgressPanel, Menüleisten-UI, Mitteilungsaktionen, Aktivitätsansicht.
-**Abnahme:** Alle Aktionen funktionieren aus Hauptfenster **und** Menüleiste; UI bleibt bei 1 Mio. Dateien flüssig (Fortschritt gedrosselt).
+### Phase 3 – Vollständige Wiederherstellung und Recovery
 
-### Phase 6 – Wiederherstellen
-Snapshot-Tabelle mit Filtern, Browser, Suche, Quick Look, Restore-Sheet, Task-Fortschritt/Abbruch, Snapshot pinnen/beschreiben/löschen.
-**Abnahme:** Wiederherstellung von Einzeldatei, Ordner, ganzem Snapshot. Byte-Vergleich in Tests; Überschreiben nur nach Bestätigung;
-Restore aus Snapshots eines anderen Rechners möglich.
+**Ergebnis:** Ein Backup lässt sich in der App finden, prüfen und ohne stilles Überschreiben wiederherstellen.
 
-### Phase 7 – Härtung & Release
-Einstellungen komplett, Sparkle, Diagnose-Export, Lokalisierung EN vollständig, Barrierefreiheits-Audit (Accessibility Inspector),
-Performance (Instruments: Speicher < 150 MB Agent im Leerlauf, CPU ≈ 0 % im Leerlauf), `docs/RELEASE-CHECKLIST.md`,
-Benutzerhilfe (`docs/HILFE.md`, inkl. „Wiederherstellen ohne MacKopia“), Signieren/Notarisieren/DMG in CI.
-**Abnahme:** Release-Checkliste vollständig grün auf macOS 26 und 27, Intel + Apple Silicon.
+Snapshot-Tabelle/Filter, lazy Browser/Suche, Quick Look, Auswahl von Datei/Ordner/Snapshot,
+Zielauswahl, Fortschritt/Abbruch, sichere Konfliktregeln und fremde Quellidentitäten verbinden.
+Recovery-Kit und Hilfe zur Wiederherstellung ohne MacKopia liefern. Pinning/Beschreibung und
+explizit bestätigte destruktive Aktionen nur mit nachgewiesenem Daten-/Konfliktschutz.
+
+**Prüfblock:** repräsentative Daten-/Metadatenfälle, Hashvergleich, Konflikte und Abbruch gegen Temp-Ziele;
+ein integrierter Restore-UI-Durchgang, Package/Xcode/Format am Ende.
+**Einstiegsstellen:** §6.4, §8.4, §9, §11.2, §12; bekannte Metadatenlimits aus Fixtures beachten.
+
+### Phase 4 – Remote-Speicherziele vollständig anschließen
+
+**Ergebnis:** S3, WebDAV und SFTP funktionieren vom Assistenten bis Backup und Restore.
+
+Pro Backend ein vollständiger größerer Arbeitsblock: Keychain/Transport, Erzeugen/Verbinden/Testen,
+Auth-/Host-Key-UX, Runtime, Offline-/Fehlerbehandlung, Wiederverbindung und Restore.
+Vorhandene S3-/WebDAV-Pipe-Spikes übernehmen, Secrets nie persistieren. Kein Neuschreiben bewährter
+CLI-/TLS-Bausteine. Fehlender Zugang zu einem Backend blockiert nur dessen realen Nachweis;
+keine fremden Konten oder Infrastruktur ohne Auftrag einrichten.
+
+**Prüfblock:** Backend-Vertrag, Secret-Persistenznegativtest und ein kompletter temporärer Lifecycle
+je geändertem Backend; vorhandene lange Spikes nur bei betroffenen Verträgen erneut ausführen.
+**Einstiegsstellen:** §6.2–§6.4, §8, §9, SPIKE-D-SECRETS.md.
+
+### Phase 5 – macOS-27-Erlebnis und Betriebsqualität
+
+**Ergebnis:** Eine ruhige, vollständig bedienbare, ressourcenschonende native App mit sinnvollen Systemanbindungen.
+
+UI- und Zustandswege über Fenster/Menüleiste/Tastatur vereinheitlichen; modernste passende SwiftUI-,
+Observation-, Concurrency-, Network-, ServiceManagement-, UserNotifications-, Quick-Look- und
+DiskArbitration-Anbindungen ohne Alt-OS-Fallbacks nutzen. App Intents/Spotlight nur für konkrete
+freigegebene Aktionen, keine spekulativen neuen Entitlements/Buildphasen. Einstellungen und
+Diagnose vervollständigen. Accessibility/DE-EN/Light-Dark-Kontrast zusammenhängend prüfen.
+Mit Instruments echte Idle-CPU, Speicher, I/O und Updatefrequenz messen, dann begründet optimieren.
+Keine große Umarchitektur bereits korrekter Module allein wegen einer neuen API.
+
+**Prüfblock:** ein gebündelter UI-/Accessibility-/Performance-Audit mit reproduzierbaren Szenarien,
+gezielte Regressionstests für gefundene Fehler; manuelle Nachweise separat mit Datum dokumentieren.
+**Einstiegsstellen:** §4–§5, §11–§13, AGENTS.md §7.
+
+### Phase 6 – Kontoloser Vertrieb und Release
+
+**Ergebnis:** Ein heruntergeladenes macOS-27-arm64-Artefakt ist installierbar, aktualisierbar und dokumentiert.
+
+Ad-hoc-Signaturen, Hardened Runtime, Packaging/DMG, Sparkle-EdDSA-Verifikation, Hilfe, Diagnose-Export
+und Wiederherstellungs-Kit final verbinden. Quarantänisierten Download mit bewusster Gatekeeper-Freigabe,
+Dienstregistrierung, Keychain-/FDA-Verhalten einschließlich Updates und reale Restore-Sicherheit prüfen.
+Keine Developer-ID-/Notarisierungs-/Intel-/Alt-OS-Anforderung wieder einführen.
+
+**Prüfblock:** einmal vollständige Release-Prüfung auf macOS 27/Apple Silicon: Package/Contracts,
+Xcode Release/Artefaktsignaturen, Temp-Backend-Durchstiche und manueller Installations-/UI-/Hardware-Audit.
+Nur tatsächliche Release-Risiken blockieren die Veröffentlichung; offene Nachweise sind kein Grund,
+die übrige Implementierung in eine alte Phase zurückzustufen.
+**Einstiegsstellen:** §8, §13, §16; RELEASE-CHECKLIST.md bei Beginn dieser Phase anlegen.
+
+### Evidenz und Neustart ohne großen Chat-Kontext
+
+STATUS.md benennt genau den nächsten größeren Auftrag samt Fertigkriterien und betroffenen Dateien.
+IMPLEMENTIERUNG.md beschreibt den aktuellen verdrahteten Stand, nicht die gesamte Sessiongeschichte.
+Prüfergebnisse enthalten Codezustand/Toolchain, geprüften Umfang, Ergebnis und Logpfad; nach relevanten
+Codeänderungen sind ältere Ergebnisse historische Evidenz. Kein „grün“ für ungetestete neue Änderungen.
+Lange Logs und alte Aufträge bleiben im Archiv und werden nur für eine konkrete offene Frage gelesen.
 
 ---
 
@@ -1477,18 +1682,34 @@ Fehler-Mapping gehört in **eine** Datei mit Tests pro Zeile.
 
 ---
 
-## 16. Offene Punkte (vor Phase 0 klären)
+## 16. Produktentscheidungen und Vertrieb
 
 1. Endgültiger App-Name (Markenprüfung; „Kopia“ im Namen ggf. mit dem Kopia-Projekt abstimmen) und Bundle-ID-Präfix.
-2. **Für spätere Releases zurückgestellt:** Apple Developer Team-ID, Developer-ID-Signierung und Notarisierung; der Nutzer hat derzeit keine Developer ID. Keine Voraussetzung für die laufende signierungsunabhängige Entwicklung. Hosting für Appcast/DMG (z. B. GitHub Releases) später festlegen.
+2. **Verbindlicher Vertrieb ohne Apple-Konto (2026-10-25):** außerhalb des App Store, ohne
+   Developer ID oder verpflichtende Notarisierung. Lokale Ad-hoc-Signaturen sichern Bundle-Integrität
+   und XPC-Code-Identität. Bei regulärer Gatekeeper-Warnung gibt der Nutzer die App bewusst über
+   „Datenschutz & Sicherheit → Dennoch öffnen“ frei; kein globales Abschalten von Gatekeeper.
+   Keine Garantie für verwaltete Macs oder jede andere Blockierursache. Hilfe und Installationstest
+   mit heruntergeladenem/quarantänisiertem Vertriebsartefakt sind Release-Gates.
+   Referenz: [Apple: Apps auf dem Mac sicher öffnen](https://support.apple.com/102445).
+   XPC-Code-Hash-Anforderungen verwenden Apples [LightweightCodeRequirements](https://developer.apple.com/documentation/lightweightcoderequirements).
+   Hosting für Appcast/DMG (z. B. GitHub Releases) später festlegen.
 3. Lizenzmodell der App (Open Source? Bezahl-App? Beeinflusst Sparkle-Feed und Website, nicht die Architektur).
 
 ---
 
 ## 17. Entscheidungslog
 
+Neuere ausdrücklich ersetzende Entscheidungen haben Vorrang; alte Phasen-/Plattform-/Gate-Einträge sind historische Evidenz, keine aktuelle Arbeitsanweisung.
+
 | Datum | Entscheidung | Grund |
 |---|---|---|
+| 2026-10-25 | Agentverwalteter Login-Keychain ohne Team/Access Group, Phase-1-XPC Version 2 und alleiniger manueller Runtime-Besitzer | Kontolose SecItem-Anbindung ohne neue Entitlements oder Secret-Dateien. Gebundene Volume-Auswahl, Serialisierung, Cleanup und begrenzte ereignisgesteuerte Zustandsantworten verbinden App und bestehende Engine; lokale Einrichtung/Editor/Status sind DE/EN verdrahtet. Automatik bleibt Phase 2. |
+| 2026-10-25 | FDA-Freigabe verlangt frische Agent- und echte Kopia-Kind-Leseevidenz | [Kopia 0.23.1 readInputFile](https://github.com/kopia/kopia/blob/v0.23.1/cli/command_benchmark_compression.go) liest auch ohne ausgewählte Kompressionsmethoden. Probe ohne Repository/Dateilogging und mit 10-s-Frist; fehlende Safari-Testdatei blockiert konservativ. Keine pauschale TCC-Annahme und kein persistierter Freischalter; manuelle Installations-/Update-Zuordnung bleibt offen. |
+| 2026-10-25 | Scheduler erfasst monotone Timer-Deadline vor dem Erzeugen des Tasks | Deterministischer Regressionstest reproduziert zusätzliche Verzögerung bei später Executor-Zuteilung. Absolute Deadline verhindert das Verschieben des Termins; Queue-Evidenztests warten auf den dauerhaften Queue-Abschluss, nicht nur auf den davor geschriebenen Historieneintrag. |
+| 2026-10-25 | Ausschließlich macOS 27/Apple Silicon; neueste stabile Xcode-/Swift-/SwiftUI-Toolchain | Nutzerentscheidung: kein Legacy-/Intel-/Alt-OS-Support, aktuelle passende Systemanbindungen direkt nutzen. Verifiziert: Xcode 27.1, Swift 6.4, SDK 27; Sprachmodus bleibt Swift 6. Keine automatischen Beta-Upgrades oder spekulativen Framework-/Entitlement-Erweiterungen. |
+| 2026-10-25 | Ergebnisorientierte Phasen, große autonome Aufträge und gebündelte Prüfung ersetzen Phase-0-Sperrkette | Nutzerentscheidung: weniger wiederholte Gesamtprüfungen und Mikroaufträge. Gezielte Compiler-/Sicherheits-/Regressionsdiagnose innerhalb eines Blocks vom Nutzer ausdrücklich bestätigt; Sicherheit betroffener Live-Funktionen und ehrliche Evidenz bleiben erforderlich. Kompakte STATUS-/Implementierungsdateien, historische Protokolle nur im Archiv. |
+| 2026-10-25 | Vertrieb außerhalb des App Store ohne Apple-Developer-Konto verbindlich; ersetzt frühere Developer-ID-/Notarisierungs-Pflicht und bloßen Aufschub | Nutzerentscheidung: reguläre Gatekeeper-Warnung darf bewusst über „Dennoch öffnen“ freigegeben werden. Lokale Ad-hoc-Signaturen und Hardened Runtime; XPC pinnt exakte Code-Hashes aus dem geprüften Bundle statt Team-ID. Funktionstests für XPC, Registrierung, Keychain und FDA/TCC bleiben Pflicht; kein unsicherer Ersatztransport. |
 | 2026-10-25 | Explizites Verify zunächst auf exakte Manifest-IDs des letzten erfolgreichen Planlaufs unter gemeinsamer Backup-Sperre begrenzen | Kopia 0.23.1 prüft ohne Ziele das gesamte Speicherziel. Vollständige Quell-UUID-Zuordnung, nichtleere Ergebnisarbeit und persistente Evidenz verhindern einen leeren oder fremden Vertrauensnachweis; automatische Auslösung folgt separat |
 | 2026-10-25 | Abgeschlossene Verify-/Test-Restore-Ergebnisse in SQLite; Health liest Verify gemeinsam mit Laufhistorie | Prüfnachweise überleben Neustarts, sind an Plan und Speicherziel gebunden und enthalten nur feste Codes. Restore und Verify bleiben getrennt; ein gespeicherter Fehler darf nicht durch flüchtige Erfolgsbeobachtung verschwinden |
 | 2026-10-25 | Plausibilitätswächter pinnt auffällige neue Quellmanifeste additiv per REST und übernimmt die ersetzte ID erst nach exaktem Nachlesen; verlorene Antwort führt zu keiner Write-Wiederholung | Kopia 0.23.1 `handleEditSnapshots`/`snapshot.UpdateSnapshot` erzeugt eine neue Manifest-ID. Historie/Restore müssen diese verwenden; vorhandene Pins bleiben erhalten. Schwellwert 1–100 Prozent, Standard/Fallback 50, exakter strikter Vergleich; Pinfehler bleiben kritisch sichtbar. Keine automatische Entpinnung oder Aufbewahrungssperre |
@@ -1514,7 +1735,7 @@ Fehler-Mapping gehört in **eine** Datei mit Tests pro Zeile.
 | 2026-10-23 | Pause = Abbruch mit Checkpoint, Fortsetzen = neuer Lauf | Kopia kennt kein echtes Pausieren; Dedup macht Neustart billig |
 | 2026-10-24 | Zeit-Scheduler mit injizierter monotoner Uhr und separater Kalenderberechnung | §7.3: Wochenzeiten mit `nextTime`/`first`, Mindestintervall nach Jitter eine Sekunde; neue Intervalle ohne Historie beginnen beim Start. Nachholen bleibt eine einzelne verzögerte Anforderung. Produktive Komposition bleibt separat. |
 | 2026-10-23 | Zeitpläne nur in MacKopia, keine Kopia-Scheduling-Policies | Eine einzige Wahrheit, Trigger mit Bedingungen |
-| 2026-10-23 | APFS-Snapshots, Hooks, Finder-Mount → Phase 2 | Privilegierter Helper nötig bzw. nicht kritisch für 1.0 |
+| 2026-10-23 | APFS-Snapshots, Hooks, Finder-Mount → Version 2 | Privilegierter Helper nötig bzw. nicht kritisch für 1.0 |
 | 2026-10-23 | Phase-0-Gerüst vorerst mit `MacKopia`, `com.example.MacKopia` und leerer Team-ID; lokale Builds ad-hoc signiert | Vom Nutzer bestätigt; finale Identität und Developer-ID-Signierung bleiben offen |
 | 2026-10-23 | Zunächst leere Package-Module, App und eingebetteter Agent ohne Registrierung, XPC oder Kopia; keine zusätzlichen Entitlements | Kleiner, separat prüfbarer erster Schritt von Phase 0; noch kein abgeschlossener Phasenstand |
 | 2026-10-23 | Phase-0-Build prüft beide Architektur-Archive gegen festgeschriebene SHA256-Werte, erzeugt Universal-Kopia und signiert den eingebetteten Helper mit der App-Identität | Umsetzung von §6.1; Hashes mit offiziellen Release-Metadaten und `checksums.txt` abgeglichen; lokal ad-hoc, bei Developer-ID mit Timestamp |
@@ -1549,7 +1770,7 @@ Fehler-Mapping gehört in **eine** Datei mit Tests pro Zeile.
 | 2026-10-24 | Queue über ConfigStore und geschützten Operationskoordinator freigeben | §7.2/§7.5: aktueller Plan bei Entnahme, erneute Gleichheitsprüfung vor Callback und Queue-Abschluss nach Cleanup; keine produktive Agent-Verdrahtung. |
 | 2026-10-24 | Vollständige lokale Policy-Definition verlustfrei für den späteren Schreibabgleich vorbereiten | §7.1: unbekannte Felder/Zahlentokens erhalten, kein HTTP-Writer. Kopia 0.23.1 vererbt leere Ignore-Listen und maxFileSize 0 weiter; effektive Zielwerte müssen separat validiert werden. |
 | 2026-10-24 | Vollständige Policy-Definitionen über den vorhandenen gepinnten Lesetransport an die exakte Quelle binden | §7.1: JSON-Dokument und Fehler liegen bei den Kopia-Wire-Modellen in KopiaServer; Engine-Merge erhält unbekannte Felder und Zahlentokens. 1 MiB bereits beim Stream begrenzen; kein Revisionstoken, Writer oder automatischer Lauf. |
-| … | *(Spike-Ergebnisse aus Phase 0 hier eintragen)* | |
+| … | *(Weitere belegte Entscheidungen hier eintragen)* | |
 
 | 2026-10-24 | Retry: drei Wiederholungen zusätzlich zum ersten Lauf | Nutzer bestätigt 1, 5 und 15 Minuten; maximal vier Läufe je Kette. Monotone Timer, frische Konfigurationsprüfung und kein Retry bei unbekanntem Fehler. |
 
@@ -1566,6 +1787,14 @@ Fehler-Mapping gehört in **eine** Datei mit Tests pro Zeile.
 | 2026-10-25 | Expliziter Live-Konfigurationsreload innerhalb der automatischen Package-Laufzeit | §7.5: Queue-Entnahme während Abgleich gesperrt; geänderte Pläne/Ziele mit Cleanup abbrechen, unveränderte aktive Arbeit und Pausen erhalten. Frische Trigger-Evidenz, Retry-Reset und Historienanker; Abgleichfehler beenden Laufzeit. Kein Dateiwächter und keine produktive Agent-Freigabe. |
 
 | 2026-10-25 | Dauerhafte Queue-Absicht zusammen mit Pausen und transaktionale Historien-Crash-Abstimmung | §6.6/§7.5: Schema 2 mit Migration von Schema 1; neue Laufkennungen und frische Schutzprüfungen nach mindestens zwei Minuten. Stopp entfernt Absicht vor Abbruch; Historie behauptet keinen Erfolg nach Crash. Einzelner Runtime-Besitzer Voraussetzung; keine gemeinsame Transaktion zwischen SQLite und Steuerdatei. |
+
+| 2026-10-25 | Expliziter geschützter Test-Restore mit begrenzter Zufallsauswahl und SHA256-Vergleich | §7.6: Auswahl aus Root-Objekten der letzten vollständigen erfolgreichen Laufhistorie; nur unveränderte reguläre Originale unter 50 MB. Keine geeignete Datei oder Quelländerung erzeugt keinen Erfolg. Private 0700/0600-Temp-Ausgabe mit atomarem Schreiben und Cleanup unter Reservierung; separate dauerhafte Test-Restore-Evidenz, automatische Termine folgen. |
+
+| 2026-10-25 | Automatischer Test-Restore als serielle Nacharbeit eines erfolgreichen Backups | §7.6: dauerhafte Fälligkeit statt flüchtiger Timer, Standard 30 Tage; warnungsfreie Läufe, gemeinsame Repo-Reservierung, Abbruch samt Cleanup bei Laufsteuerung. Unentscheidbare Stichproben erzeugen keinen Termin, Prüffehler keine Backup-Retries. Produktive Agent-Komposition separat. |
+| 2026-10-25 | Wöchentliche automatische Verify-Prüfung als serielle Backup-Nacharbeit | §7.6: getrennte dauerhafte Verify-/Restore-Fälligkeit, vorhandene geschützte Engine, gemeinsamer Abbruch und Cleanup. Monatliche Stufe benötigt eigenen dauerhaften Stufennachweis und folgt separat. |
+| 2026-10-25 | Monatliche Verify-Stufe aus dauerhaft gespeichertem Dateianteil | §7.6: mindestens 10 Prozent alle 30 Tage, vorrangig vor gleichzeitig fälliger Wochenprüfung; größere explizite Prüfungen zählen mit. Wochenprüfungen verschieben den Monatstermin nicht. Legacy ohne Anteil bleibt lesbar, zählt aber nicht monatlich; automatische Health-Gültigkeit weiterhin sieben Tage. |
+| 2026-10-25 | Geschützte lesende Wartungsauswertung vor der Ausführungsanbindung | §7.6: gemeinsamer Repo-Schutz, exakte stabile Owner-Identität, typisierter Full-Termin; keine Owner-Änderung oder Wartungsausführung durch die Beobachtung. Echter gepinnter CLI-Vertrag im temporären Speicherziel geprüft. |
+| 2026-10-25 | Fällige Full-Wartung mit frischer Owner-/Terminprüfung unter gemeinsamer Reservierung | §7.6: reguläres `maintenance run --full` ohne Force-/Safety-Overrides; Konfigurationsabgleich, SleepAssertion und Abbruch-Cleanup wie Backup. Nur temporäres Testziel live geprüft; automatische Nacharbeit und dauerhafte Evidenz separat. |
 
 ---
 

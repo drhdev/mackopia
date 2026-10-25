@@ -1,45 +1,57 @@
 # MacKopia
 
-Native macOS backup app (SwiftUI, macOS 26+) built on the [Kopia](https://kopia.io) backup engine —
+Native macOS backup app (SwiftUI, macOS 27 only, Apple silicon) built on the [Kopia](https://kopia.io) backup engine —
 *Time Machine simple, Arq reliable*.
 
-> Status: Phase 0 foundation in progress. See [`docs/STATUS.md`](docs/STATUS.md).
+> Status: local app–XPC–service backup workflow implemented and automatically tested; installed service and UI audit remain open. See [`docs/STATUS.md`](docs/STATUS.md).
 
 - Specification (German): [`docs/PROJEKT.md`](docs/PROJEKT.md)
 - Contributor & agent rules: [`AGENTS.md`](AGENTS.md) (Claude Code additionally reads [`CLAUDE.md`](CLAUDE.md))
 
 Kopia is licensed under the Apache License 2.0 and is bundled as an unmodified binary.
 
+Current implementation: [`docs/IMPLEMENTIERUNG.md`](docs/IMPLEMENTIERUNG.md). Follow the outcome-based
+phases in PROJEKT.md §14 and the block-boundary testing/context workflow in AGENTS.md §5.
+Read compact status and relevant spec sections; historical transcripts are archived, not startup context.
+
 ## Development
 
-Open `MacKopia.xcodeproj` in Xcode 26 or newer and select the shared `MacKopia` scheme.
-The initial app and menu bar service are development placeholders; no backups run yet.
+Use the latest stable Xcode and its bundled Swift/SwiftUI SDK (verified baseline: Xcode 27.1, Swift 6.4, macOS 27 SDK).
+Open `MacKopia.xcodeproj` and select the shared `MacKopia` scheme.
+The UI and menu bar connect local setup, plan editing, manual backup/stop, status and history to the background service.
+Automatic scheduling and the full restore browser are the next integrated phases.
+Only macOS 27.x on arm64 is supported: no Intel/Rosetta or older-OS compatibility paths.
 The service is embedded under `Contents/Library/LoginItems`; the matching job plist is generated
-under `Contents/Library/LaunchAgents`. Service registration is explicit and has no UI control yet.
+under `Contents/Library/LaunchAgents`. Service registration is explicit through the app and Settings UI.
 
 ```bash
 swift test --package-path MacKopiaKit
 swift format lint --recursive --strict App Agent MacKopiaKit Tests
-xcodebuild -scheme MacKopia -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO build
-xcodebuild -scheme MacKopia -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO test
+xcodebuild -scheme MacKopia -destination 'platform=macOS' build test
 ```
 
-Apple development signing, Developer ID signing and notarization are deferred to later releases;
-no Apple Developer account or certificate is required for current independent development.
-Shared defaults use `com.example`, an empty team and `CODE_SIGNING_ALLOWED=NO`. Fetch/embed scripts
-also skip explicit signing unless `CODE_SIGNING_ALLOWED=YES`; builds do not configure an Apple identity.
-Upstream binaries or the linker can already supply ad-hoc code signatures; these cannot satisfy team-based XPC checks.
-Distribution signing will be configured later in the ignored `Config/Local.xcconfig`.
-The build fetches SHA256-pinned Kopia 0.23.1 archives, creates a universal helper,
+MacKopia targets distribution outside the App Store without an Apple Developer account,
+Developer ID certificate or mandatory notarization. App, Agent and embedded Kopia use local
+ad-hoc signatures (`-`) with Hardened Runtime; the team remains empty. No Apple signing
+identity, provisioning profile or additional entitlements are needed. For a regular Gatekeeper
+warning, users can explicitly approve the downloaded app under System Settings → Privacy &
+Security → Open Anyway. Download/quarantine installation still needs release testing.
+Xcode's separate debug dylib is disabled because ad-hoc code cannot meet its team-based
+library validation. Bundle tests run outside the protected app, without relaxing product security.
+The build fetches SHA256-pinned Kopia 0.23.1 archives, uses only the native arm64 helper,
 and embeds it at `Contents/Helpers/kopia`. Apache license text and the upstream README
 are included in `Contents/Resources/Kopia`. Downloads are cached under ignored `Vendor/`.
 Run `./Scripts/fetch-kopia.sh` to prepare the helper independently. A cached archive with
 a mismatched hash fails the build; remove that archive explicitly before retrying.
-The `AgentProtocol` module contains the signed XPC ping and the `SMAppService` registration boundary.
-Both client and listener require a valid team signature and an exact peer signing identifier;
-ad-hoc builds fail closed. The listener starts with the Agent. UI wiring and successful signed
-registration/ping, including TCC/FDA behavior, still need verification after signing is configured.
-Protocol and registration error paths are covered without installing a system service.
+The `AgentProtocol` module contains version-2 bounded service requests, revision-based status updates,
+reconnect support and the `SMAppService` registration boundary. The older ping remains a contract fixture.
+Both client and listener pin the exact peer signing identifier and CodeDirectory hash from
+the validated installed bundle. The running executable must match its own disk signature;
+invalid or unsigned code fails closed. The listener starts with the Agent. Live registration,
+positive/negative App–Agent connection, download installation and TCC/FDA behavior still need verification
+with the ad-hoc distribution build. The agent uses the local login Keychain without team/access-group
+entitlements or a credential-file fallback. Fresh protected-file probes must succeed in both the agent
+and bundled Kopia before source access is admitted. Tests do not register a persistent background service.
 
 The Phase-0 filesystem probe creates an isolated temporary repository, backs up generated
 files, restores to a new directory, verifies every file, and records metadata observations:
