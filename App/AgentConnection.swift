@@ -195,7 +195,7 @@ final class AgentConnection {
         case .destination:
             String(
                 localized:
-                    "Speicherziel oder Quelle nicht verfügbar. Prüfe Laufwerk, Ordner, freien Speicher und Backup-Passwort. Nach einem abgebrochenen Anlegen kannst du das vorhandene Ziel verbinden."
+                    "Speicherziel oder Quelle nicht verfügbar. Prüfe Laufwerk, Netzwerk, Ordner, freien Speicher und Backup-Passwort. Bei S3 kannst du unter Speicherziele die Zugangsdaten prüfen und aktualisieren. Nach einem abgebrochenen Anlegen kannst du das vorhandene Ziel verbinden."
             )
         case .invalidRequest: String(localized: "Eingaben ungültig. Prüfe Namen, Quellen und Speicherziel.")
         case .backupFailed:

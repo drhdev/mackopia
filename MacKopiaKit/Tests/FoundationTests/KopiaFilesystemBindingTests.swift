@@ -20,7 +20,10 @@ struct KopiaFilesystemBindingTests {
         let document: [String: Any] = [
             "storage": [
                 "type": change == "backend" ? "s3" : "filesystem",
-                "config": ["path": root.appendingPathComponent(change == "path" ? "other" : "storage").path],
+                "config": [
+                    "path": root.appendingPathComponent(change == "path" ? "other" : "storage").path,
+                    "fileMode": 384, "dirMode": 448, "dirShards": NSNull(),
+                ],
             ],
             "username": change == "identity" ? "other" : "user", "hostname": "host",
             "enableActions": change == "actions",

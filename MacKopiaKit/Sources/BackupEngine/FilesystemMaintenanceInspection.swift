@@ -30,29 +30,27 @@ package struct FilesystemMaintenanceInspection: MaintenanceInspecting, Maintenan
     }
 
     package func inspect(repository: Repository, lowPriority: Bool) async throws -> KopiaMaintenanceInfo {
-        let password = try await password(repository: repository)
+        let credentials = try await credentials(repository: repository)
         return try await KopiaMaintenanceReader().read(
             executable: executable,
             paths: KopiaRepositoryPaths(repositoryID: repository.id, homeDirectory: homeDirectory),
-            temporaryDirectory: temporaryDirectory, user: user, backupPassword: password, lowPriority: lowPriority)
+            temporaryDirectory: temporaryDirectory, user: user, backupPassword: credentials.password,
+            lowPriority: lowPriority, s3: credentials.s3)
     }
 
     package func runFull(repository: Repository, lowPriority: Bool) async throws {
-        let password = try await password(repository: repository)
+        let credentials = try await credentials(repository: repository)
         try await KopiaMaintenanceRunner().runFull(
             executable: executable,
             paths: KopiaRepositoryPaths(repositoryID: repository.id, homeDirectory: homeDirectory),
-            temporaryDirectory: temporaryDirectory, user: user, backupPassword: password, lowPriority: lowPriority)
+            temporaryDirectory: temporaryDirectory, user: user, backupPassword: credentials.password,
+            lowPriority: lowPriority, s3: credentials.s3)
     }
 
-    private func password(repository: Repository) async throws -> String {
+    private func credentials(repository: Repository) async throws -> RepositoryCredentials {
         try Task.checkCancellation()
-        guard case .filesystem = repository.kind,
-            let value = try await secrets.read(repository.secretRef),
-            let password = String(data: value.data, encoding: .utf8), !password.isEmpty
-        else { throw BackupOperationError.operationFailed }
-        try Task.checkCancellation()
+        let credentials = try await RepositoryCredentials.read(repository: repository, secrets: secrets)
         try KopiaFilesystemBinding.validate(repository: repository, homeDirectory: homeDirectory)
-        return password
+        return credentials
     }
 }

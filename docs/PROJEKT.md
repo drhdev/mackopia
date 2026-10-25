@@ -287,6 +287,17 @@ Pflichtanforderungen:
    `kopia`-Prozesse aus PID-Dateien beenden (nur wenn PID + Executable-Pfad passen).
 9. Exit-Code ≠ 0 → `KopiaError` mit `exitCode`, letzten 50 stderr-Zeilen (redigiert) und gemapptem `kind`.
 
+S3-Produktionspfad (Phase 4): `repository create s3 --create-only` erhält AWS-Zugangsdaten nur über
+Environment. Danach erzeugt der Agent atomar eine isolierte 0600-Verbindungsdatei mit einer exakten
+Storage-Allowlist ohne `accessKeyID`, `secretAccessKey` oder `sessionToken`. Cache-Kapazitäten explizit setzen;
+Balanced/zstd und Wartungs-Owner nach Create separat initialisieren. Connect liest Status/Owner, beansprucht
+nur einen bislang leeren Owner und übernimmt fremde Owner unverändert. Passwort und AWS-Werte liegen als
+begrenztes Envelope gemeinsam unter `Repository.secretRef` im Schlüsselbund, nie in App-Konfiguration/Events.
+Vor Backup sowie Credential-Ersatz erfolgen Status und ein frischer Format-Blob-Read; Cache-Evidenz allein
+bestätigt keinen Zugang. Ersatz-Credentials erst nach erfolgreicher Probe speichern. HTTPS ist verbindlich;
+HTTP wird nur für literales `127.0.0.1` zum lokalen Test zugelassen, keine allgemeine TLS-Ausnahme.
+Object-Lock-Einrichtung bleibt bis zu einem eigenen Backend-Nachweis außerhalb dieses Assistenten.
+
 ### 6.3 Typisierte CLI-Kommandos (`KopiaCommand`)
 
 Jedes Kommando ist ein Wert-Typ, der `arguments`, `environment`, `timeout` und den Ergebnis-Typ kennt:
@@ -1503,14 +1514,14 @@ Byte-/Datumsformatierung ausschließlich mit `ByteCountFormatStyle`, `Date.Forma
 
 ## 12. App ↔ Agent-Protokoll
 
-**Verdrahteter Phase-1/2/3-Vertrag (Version 4):** `AgentServiceClient/Server` transportieren begrenzte
+**Verdrahteter Phase-1/2/3/S3-Vertrag (Version 5):** `AgentServiceClient/Server` transportieren begrenzte
 JSON-Daten in einem Codable-XPC-Umschlag. Vor der Domain-Dekodierung gelten 1 MiB für Requests und
-16 MiB für Antworten. Version/UUID korrelieren jede Antwort; Secrets sind nur im Setup-Request zulässig.
+16 MiB für Antworten. Version/UUID korrelieren jede Antwort; Secrets sind ausschließlich in Setup- und Credential-Aktualisierungsrequests zulässig.
 Jede authentifizierte Sitzung nimmt genau einen Request an und sendet die asynchrone Antwort über
 dieselbe Sitzung. Die öffentlichen Produktionskonstruktoren erzwingen weiterhin Code-Hash-Pinning;
 der anonyme Testendpoint existiert ausschließlich im Testtarget.
 
-Implementiert: Zustand, lokales Erzeugen/Verbinden, neuer Plan am vorhandenen Ziel, validiertes Plan-Update,
+Implementiert: Zustand, lokales und S3-Erzeugen/Verbinden, geprüfter S3-Credential-Ersatz, neuer Plan am vorhandenen Ziel, validiertes Plan-Update,
 explizite Konfigurations-Recovery, manueller Start/Stopp, Plan-/globale Pause mit absoluter Frist,
 Fortsetzen, explizites Verify, Mitteilungseinstellung und Automatik-Neustart; außerdem Snapshot-Katalog/Browser,
 begrenzte Suche, Beschreibung/Nutzer-Pin, Restore-Admission/Abbruch und Quick-Look-Cache-Lifecycle.
@@ -1674,6 +1685,9 @@ ein integrierter Restore-UI-Durchgang, Package/Xcode/Format am Ende.
 ### Phase 4 – Remote-Speicherziele vollständig anschließen
 
 **Ergebnis:** S3, WebDAV und SFTP funktionieren vom Assistenten bis Backup und Restore.
+
+S3 ist über denselben Dienst/Runtime-Pfad integriert; temporärer Lifecycle und offene Live-Nachweise in STATUS.md.
+Nächster Backend-Block: WebDAV über den bereits freigegebenen Pipe-Transport, danach SFTP.
 
 Pro Backend ein vollständiger größerer Arbeitsblock: Keychain/Transport, Erzeugen/Verbinden/Testen,
 Auth-/Host-Key-UX, Runtime, Offline-/Fehlerbehandlung, Wiederverbindung und Restore.
@@ -1865,6 +1879,8 @@ Neuere ausdrücklich ersetzende Entscheidungen haben Vorrang; alte Phasen-/Platt
 | 2026-10-25 | Phase 3: Restore in neue private Ordner, dienstbesessene Operationen und XPC Version 4 | §11.2/§12: UI-Auswahl über Snapshot-ID/Namenskomponenten, frische Manifeste/Abstammung, gemeinsame Repo-/Automatik-Sperren und Ziel-/Ausgabe-UUID-Schutz. Kein Originalquellenzugriff; keine Überschreib-/Originalort-Option ohne zusätzlichen Konfliktnachweis. Temp-Integration bestätigt Inhalte, Metadaten, Konfliktablehnung, Abbruch und fremde Identitäten. |
 | 2026-10-25 | Kopia 0.23.1: Restore mit Manifest/Namenspfad und exakten Unicode-Bytes | Rohe Dateiobjekte verlieren Namen/Metadaten; Go unterscheidet NFC/NFD, Swift-Gleichheit nicht. Dienst verwendet gespeicherte Namen und verweigert mehrdeutige äquivalente Einträge. Kopia-Edit ersetzt Manifest-ID; Nutzer-Pin ist getrennt von Sicherheits-Pins. |
 | 2026-10-25 | Begrenzter lazy Restore-Browser, Quick Look und Recovery-Kit ohne Passwort | §8.4/§11.2: explizite Suchgrenzen; Cache-Sitzung privat und beim Schließen bereinigt, Crashreste als offene Grenze dokumentiert. Kit über nativen Druck-/PDF-Dialog ohne Secret-Rückgabe. Manuelle Druck-/DE-EN-/A11y-Abnahme separat. |
+
+| 2026-10-25 | Phase 4/S3: secretfreier Create-only-Bootstrap, Keychain-Envelope und XPC Version 5 | §6.2/§8/§9: eigene atomare Connection ohne AWS-Felder; Credentials nur an Kind-Environment, frischer Format-Blob statt Cache als Auth-Evidenz, geprüfter Credential-Ersatz. Bestehende Runtime/Restore/Verify/Wartung gemeinsam; HTTPS und ausschließlich lokales 127.0.0.1-HTTP-Fixture. Object Lock und reale Provider-Abnahme separat. |
 
 ---
 

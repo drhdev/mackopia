@@ -64,7 +64,7 @@ package actor SnapshotVerificationEngine {
         guard let repository = configuration.repositories.first(where: { $0.id == plan.repositoryID }) else {
             throw JobAdmissionError.repositoryUnavailable
         }
-        guard case .filesystem = repository.kind else { throw BackupOperationError.operationFailed }
+        guard repository.kind.isIntegratedBackend else { throw BackupOperationError.operationFailed }
         let attempt = VerificationAttempt()
         let history = history
         let verifier = verifier

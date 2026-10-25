@@ -1,14 +1,14 @@
-"""Minimal SigV4 verification for loopback GET/HEAD fixture requests, not a service."""
+"""Minimal SigV4 verification for loopback fixture requests, not a service."""
 
 import hashlib
 import hmac
 from urllib.parse import parse_qsl, quote, urlsplit
 
 
-def authorized(method, target, headers, access_key, secret_key, session_token):
+def authorized(method, target, headers, access_key, secret_key, session_token, methods=("GET", "HEAD")):
     try:
         authorization = headers.get("Authorization", "")
-        if not authorization.startswith("AWS4-HMAC-SHA256 ") or method not in ("GET", "HEAD"):
+        if not authorization.startswith("AWS4-HMAC-SHA256 ") or method not in methods:
             return False
         fields = dict(item.strip().split("=", 1) for item in authorization[17:].split(","))
         credential = fields["Credential"].split("/")
@@ -16,7 +16,7 @@ def authorized(method, target, headers, access_key, secret_key, session_token):
             return False
         identity, date, region, service, suffix = credential
         if (identity != access_key or service != "s3" or suffix != "aws4_request"
-                or headers.get("X-Amz-Security-Token") != session_token):
+                or headers.get("X-Amz-Security-Token", "") != session_token):
             return False
         signed = fields["SignedHeaders"].split(";")
         if signed != sorted(set(signed)) or not {"host", "x-amz-date"}.issubset(signed):

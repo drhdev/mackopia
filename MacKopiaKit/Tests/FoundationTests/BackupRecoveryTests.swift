@@ -163,7 +163,13 @@ struct BackupRecoveryTests {
         try await waitForRuntime { fixture.time.sleeperCount == 1 }
         fixture.time.advance(120)
         try await restarted.resume(planID: fixture.plan.id)
-        try await waitForRuntime { await fixture.history.finished.count == 2 }
+        // History is finalized before queue completion persists removal of the durable intent.
+        // Observe both boundaries before asserting the saved state below.
+        try await waitForRuntime {
+            let recorded = await fixture.history.finished.count == 2
+            let released = await restarted.queue.activeJobs.isEmpty
+            return recorded && released
+        }
         #expect(await fixture.history.finished.last?.outcome == .succeeded)
         #expect(await fixture.sessions.opens == 2)
         _ = try saved.load()

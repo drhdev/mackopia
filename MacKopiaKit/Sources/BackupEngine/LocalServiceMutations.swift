@@ -41,7 +41,7 @@ extension LocalBackupService {
         try await startRuntime()
     }
 
-    private func mutate(_ operation: @escaping @Sendable () async throws -> Void) async throws {
+    func mutate(_ operation: @escaping @Sendable () async throws -> Void) async throws {
         try availableForMutation()
         guard active == nil, let runtime else { throw LocalServiceIssue.busy }
         mutating = true

@@ -11,6 +11,7 @@ struct KopiaExecutionContext: Sendable, CustomReflectable {
     let user: String
     let configuration: Configuration
     let backupPassword: String
+    var s3: KopiaS3Authentication? = nil
 
     var customMirror: Mirror { Mirror(self, children: ["context": "<private>"]) }
 
@@ -37,7 +38,7 @@ struct KopiaExecutionContext: Sendable, CustomReflectable {
                 "HOME": paths.homeDirectory.path, "USER": user, "TMPDIR": temporaryDirectory.path,
                 "KOPIA_LOG_DIR": logs.path, "KOPIA_CACHE_DIRECTORY": cache.path,
                 "KOPIA_PASSWORD": backupPassword,
-            ],
+            ].merging(s3?.environment ?? [:]) { _, new in new },
             webDAVConfiguration: payload, repositoryDirectory: runtimeRoot)
     }
 }

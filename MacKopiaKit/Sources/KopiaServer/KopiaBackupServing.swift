@@ -1,4 +1,5 @@
 import Foundation
+import KopiaCLI
 
 /// Exact-source writes; a successful upload response only acknowledges the request.
 package protocol KopiaBackupServing: KopiaPolicyServing {
@@ -22,11 +23,11 @@ package struct KopiaBackupSession: Sendable {
 
     package static func start(
         executable: URL, repositoryID: UUID, homeDirectory: URL, temporaryDirectory: URL,
-        user: String, backupPassword: String, lowPriority: Bool = false
+        user: String, backupPassword: String, lowPriority: Bool = false, s3: KopiaS3Authentication? = nil
     ) async throws -> Self {
         let configuration = try KopiaServerConfiguration(
             executable: executable, repositoryID: repositoryID, homeDirectory: homeDirectory,
-            temporaryDirectory: temporaryDirectory, user: user, backupPassword: backupPassword)
+            temporaryDirectory: temporaryDirectory, user: user, backupPassword: backupPassword, s3: s3)
         let process = KopiaServerProcess()
         let handshake = try await process.start(configuration: configuration, lowPriority: lowPriority)
         let client = KopiaServerClient(handshake: handshake)

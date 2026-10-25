@@ -27,14 +27,12 @@ package struct FilesystemBackupSessions: BackupSessionOpening {
     }
 
     package func open(repository: Repository, options: PlanOptions) async throws -> KopiaBackupSession {
-        guard case .filesystem = repository.kind else { throw BackupOperationError.operationFailed }
-        guard let value = try await secrets.read(repository.secretRef),
-            let password = String(data: value.data, encoding: .utf8), !password.isEmpty
-        else { throw BackupOperationError.operationFailed }
+        let credentials = try await RepositoryCredentials.read(repository: repository, secrets: secrets)
+        let password = credentials.password
         try KopiaFilesystemBinding.validate(repository: repository, homeDirectory: homeDirectory)
         return try await KopiaBackupSession.start(
             executable: executable, repositoryID: repository.id, homeDirectory: homeDirectory,
             temporaryDirectory: temporaryDirectory, user: user, backupPassword: password,
-            lowPriority: options.lowPriority)
+            lowPriority: options.lowPriority, s3: credentials.s3)
     }
 }

@@ -6,10 +6,10 @@ import Foundation
 struct RestoreDestination {
     static func create(parent: BackupSource, repository: Repository) throws -> URL {
         let url = URL(fileURLWithPath: parent.path)
-        guard url.resolvingSymlinksInPath().path == parent.path,
-            case .filesystem(let repositoryPath, _) = repository.kind,
-            !isWithin(parent.path, repositoryPath)
-        else { throw LocalServiceIssue.destination }
+        guard url.resolvingSymlinksInPath().path == parent.path else { throw LocalServiceIssue.destination }
+        if case .filesystem(let repositoryPath, _) = repository.kind, isWithin(parent.path, repositoryPath) {
+            throw LocalServiceIssue.destination
+        }
         let values = try url.resourceValues(forKeys: [.isDirectoryKey, .volumeUUIDStringKey, .volumeIsLocalKey])
         guard values.isDirectory == true, values.volumeIsLocal == true else { throw LocalServiceIssue.destination }
         try parent.volume.requireMatch(uuid: values.volumeUUIDString)

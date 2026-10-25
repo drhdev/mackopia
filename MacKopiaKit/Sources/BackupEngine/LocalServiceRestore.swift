@@ -154,10 +154,10 @@ extension LocalBackupService {
                             executable: self.executable, paths: paths,
                             temporaryDirectory: self.temporary, expectedVersion: self.version
                         ).verify()
-                        guard case .filesystem(let path, let volume) = repository.kind, let volume else {
-                            throw LocalServiceIssue.destination
+                        if case .filesystem(let path, let volume) = repository.kind {
+                            guard let volume else { throw LocalServiceIssue.destination }
+                            _ = try await FilesystemDestinationPreflight().validate(path: path, expectedVolume: volume)
                         }
-                        _ = try await FilesystemDestinationPreflight().validate(path: path, expectedVolume: volume)
                         let session = try await FilesystemBackupSessions(
                             executable: self.executable,
                             homeDirectory: self.home, temporaryDirectory: self.temporary, user: NSUserName(),

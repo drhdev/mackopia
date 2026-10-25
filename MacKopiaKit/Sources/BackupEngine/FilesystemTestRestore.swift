@@ -32,10 +32,8 @@ package struct FilesystemTestRestore: SnapshotTestRestoring {
         repository: Repository, sources: [BackupSource], run: JobRun, lowPriority: Bool
     ) async throws -> Bool {
         try Task.checkCancellation()
-        guard case .filesystem = repository.kind,
-            let value = try await secrets.read(repository.secretRef),
-            let password = String(data: value.data, encoding: .utf8), !password.isEmpty
-        else { throw BackupOperationError.operationFailed }
+        let credentials = try await RepositoryCredentials.read(repository: repository, secrets: secrets)
+        let password = credentials.password
         try KopiaFilesystemBinding.validate(repository: repository, homeDirectory: homeDirectory)
         let paths = try KopiaRepositoryPaths(repositoryID: repository.id, homeDirectory: homeDirectory)
         let sampler = KopiaRestoreSampler()
@@ -45,7 +43,8 @@ package struct FilesystemTestRestore: SnapshotTestRestoring {
             }
             let samples = try await sampler.samples(
                 rootID: backup.rootID, executable: executable, paths: paths,
-                temporaryDirectory: temporaryDirectory, user: user, backupPassword: password, lowPriority: lowPriority)
+                temporaryDirectory: temporaryDirectory, user: user, backupPassword: password, lowPriority: lowPriority,
+                s3: credentials.s3)
             for sample in samples.shuffled() {
                 let result = try await RestoreSampleComparison.compare(
                     sourcePath: source.path, sample: sample, temporaryDirectory: temporaryDirectory
@@ -53,7 +52,7 @@ package struct FilesystemTestRestore: SnapshotTestRestoring {
                     try await sampler.restore(
                         sample, to: destination, executable: executable, paths: paths,
                         temporaryDirectory: temporaryDirectory, user: user,
-                        backupPassword: password, lowPriority: lowPriority)
+                        backupPassword: password, lowPriority: lowPriority, s3: credentials.s3)
                 }
                 if let result { return result }
             }

@@ -2126,6 +2126,136 @@
           }
         }
       }
+    },
+    "S3-kompatibel": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "S3 compatible"
+          }
+        }
+      }
+    },
+    "HTTPS-Endpunkt": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "HTTPS endpoint"
+          }
+        }
+      }
+    },
+    "Bucket": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bucket"
+          }
+        }
+      }
+    },
+    "Präfix": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Prefix"
+          }
+        }
+      }
+    },
+    "Region": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Region"
+          }
+        }
+      }
+    },
+    "Zugriffsschlüssel": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Access key"
+          }
+        }
+      }
+    },
+    "Geheimer Zugriffsschlüssel": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Secret access key"
+          }
+        }
+      }
+    },
+    "Sitzungstoken (optional)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Session token (optional)"
+          }
+        }
+      }
+    },
+    "Zugang prüfen und speichern": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Test and save credentials"
+          }
+        }
+      }
+    },
+    "Zugangsdaten aktualisieren…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Update credentials…"
+          }
+        }
+      }
+    },
+    "Verwende einen vorhandenen Bucket und Zugangsdaten mit Lese-, Schreib-, Listen- und Löschrechten nur für das gewählte Präfix. Die Einrichtung prüft den Zugang; vorhandene Backups werden beim Anlegen nicht ersetzt.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Use an existing bucket and credentials with read, write, list, and delete permissions limited to the selected prefix. Setup tests access; creating a destination does not replace existing backups."
+          }
+        }
+      }
+    },
+    "Speicherziel oder Quelle nicht verfügbar. Prüfe Laufwerk, Netzwerk, Ordner, freien Speicher und Backup-Passwort. Bei S3 kannst du unter Speicherziele die Zugangsdaten prüfen und aktualisieren. Nach einem abgebrochenen Anlegen kannst du das vorhandene Ziel verbinden.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Destination or source unavailable. Check the drive, network, folder, free space, and backup password. For S3, test and update credentials under Destinations. After interrupted creation, you can connect the existing destination."
+          }
+        }
+      }
+    },
+    "2. Speichere diese Verbindungsdatei mit Zugriffsrechten nur für deinen Benutzer (0600) und einem eigenen absoluten Cache-Pfad. Stelle AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, gegebenenfalls AWS_SESSION_TOKEN und KOPIA_PASSWORD nur in der Prozessumgebung bereit. Verwende repository status zum Prüfen; repository connect würde Zugangsdaten in der Datei speichern.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "2. Save this connection file with permissions restricted to your user (0600) and a separate absolute cache path. Supply AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, optional AWS_SESSION_TOKEN, and KOPIA_PASSWORD only in the process environment. Test with repository status; repository connect would save credentials in the file."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

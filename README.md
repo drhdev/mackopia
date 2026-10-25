@@ -14,12 +14,28 @@ Current implementation: [`docs/IMPLEMENTIERUNG.md`](docs/IMPLEMENTIERUNG.md). Fo
 phases in PROJEKT.md §14 and the block-boundary testing/context workflow in AGENTS.md §5.
 Read compact status and relevant spec sections; historical transcripts are archived, not startup context.
 
+## S3 destinations
+
+The setup assistant can create or connect an encrypted destination in an existing S3-compatible bucket.
+Enter an HTTPS endpoint without a path, bucket, region, optional prefix, access key, secret key and optional
+session token, together with the separate backup password. Limit provider permissions to the selected prefix.
+Setup tests access; new plans remain manual until you choose a schedule.
+
+The agent stores credentials in the login Keychain and supplies them only through child-process environment
+variables. Its connection file contains no AWS credential fields. Under Destinations, **Update credentials…**
+tests replacements before saving them. Backup, verification, maintenance and restore share the existing
+service runtime and repository reservation. Recovery kits include connection metadata without credentials.
+
+A complete lifecycle is tested against disposable local SigV4-authenticated storage. Compatibility with a real
+provider and its IAM policy, installed Keychain behavior, and manual UI/PDF review still require live evidence.
+Object Lock setup is not exposed yet. Plain HTTP is accepted only for the literal loopback test address 127.0.0.1.
+
 ## Development
 
 Use the latest stable Xcode and its bundled Swift/SwiftUI SDK (verified baseline: Xcode 27.1, Swift 6.4, macOS 27 SDK).
 Open `MacKopia.xcodeproj` and select the shared `MacKopia` scheme.
 The UI and menu bar connect local setup, plan editing, manual backup/stop, status and history to the background service.
-Automatic scheduling and the full restore browser are the next integrated phases.
+Automatic scheduling and the full restore browser are integrated; WebDAV and SFTP are the next backend integrations.
 Only macOS 27.x on arm64 is supported: no Intel/Rosetta or older-OS compatibility paths.
 The service is embedded under `Contents/Library/LoginItems`; the matching job plist is generated
 under `Contents/Library/LaunchAgents`. Service registration is explicit through the app and Settings UI.
@@ -134,5 +150,6 @@ and separate. Results and requests redact their debug reflection; raw child outp
 Native integration tests use the pinned binary and disposable filesystem/WebDAV destinations. They run
 when the fetched binary is available; CI sets `MACKOPIA_REQUIRE_KOPIA_INTEGRATION=1` to prevent silent skips.
 `swift test --package-path MacKopiaKit --filter Integration` runs that suite after fetching Kopia.
-Long-lived server stdin/handshake ownership, PID-file recovery, Keychain, domain DTO/error mapping and
-App/Agent wiring remain pending. The app still does not perform backups.
+The long-lived server, Keychain adapter, domain mapping and App/Agent workflow are now integrated;
+installed service/Keychain permissions and provider-specific behavior still need live acceptance.
+See the current implementation atlas and status for the authoritative integration state.

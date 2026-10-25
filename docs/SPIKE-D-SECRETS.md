@@ -190,3 +190,17 @@ nicht blockieren. Der langlebige Kopia-Server und der Schlüsselbund sind weiter
 
 Für das CLI-Status-JSON gilt `storage.type`; die Felder unterscheiden sich vom REST-Status:
 [geprüfter Quellcode v0.23.1](https://github.com/kopia/kopia/blob/v0.23.1/cli/command_repository_status.go).
+
+
+### S3-Produktionsintegration (2026-10-25)
+
+Der S3-Pfad ist jetzt im Swift-Dienst, XPC-5-Assistenten und Restore integriert. `KopiaS3Setup` verwendet
+Create-only und eine atomar publizierte credentialfreie Connection; `RepositoryCredentials` lädt das
+Passwort-/AWS-Envelope frisch aus dem Schlüsselbund. Ein zusätzlicher Format-Blob-Read verhindert,
+dass lokale Cache-Evidenz allein als Authentifizierung eines Credential-Ersatzes gilt.
+
+`S3ServiceIntegrationTests` prüft gegen eine wegwerfbare SigV4-/Chunk-signaturprüfende Nachbildung Create,
+Backup/Verify/Test-Restore, Neustart, Restore ohne Original, Connect mit erhaltenem fremdem Owner,
+falsche Schlüssel/Tokens/Passwörter, abgelehnten Credential-Ersatz, Offline-Zustand und Secret-Persistenz.
+Ein eigener Durchstich prüft Zugriffsschlüssel ohne Sitzungstoken. Aktuelle Ergebnisse/Live-Grenzen:
+[STATUS.md](STATUS.md). Echte Provider/IAM/Object-Lock und installierter Keychain-Betrieb bleiben separat.

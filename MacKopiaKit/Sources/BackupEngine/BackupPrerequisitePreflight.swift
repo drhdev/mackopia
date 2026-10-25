@@ -33,7 +33,12 @@ package struct BackupPrerequisitePreflight: Sendable {
         // Never return/cache the value in a preflight report. The eventual operation resolves it afresh.
         let present: Bool
         do {
-            present = try await secrets.read(repository.secretRef) != nil
+            if case .s3 = repository.kind {
+                _ = try await RepositoryCredentials.read(repository: repository, secrets: secrets)
+                present = true
+            } else {
+                present = try await secrets.read(repository.secretRef) != nil
+            }
         } catch {
             if Task.isCancelled || error is CancellationError { throw CancellationError() }
             throw error as? SecretStoreError ?? .unavailable

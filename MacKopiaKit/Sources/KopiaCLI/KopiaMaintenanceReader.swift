@@ -9,12 +9,12 @@ package struct KopiaMaintenanceReader: Sendable {
 
     package func read(
         executable: URL, paths: KopiaRepositoryPaths, temporaryDirectory: URL,
-        user: String, backupPassword: String, lowPriority: Bool
+        user: String, backupPassword: String, lowPriority: Bool, s3: KopiaS3Authentication? = nil
     ) async throws -> KopiaMaintenanceInfo {
         try Task.checkCancellation()
         let context = KopiaExecutionContext(
             executable: executable, paths: paths, temporaryDirectory: temporaryDirectory,
-            user: user, configuration: .file, backupPassword: backupPassword)
+            user: user, configuration: .file, backupPassword: backupPassword, s3: s3)
         var request = context.request(for: .maintenanceInfo)
         request.lowPriority = lowPriority
         let result = try await process.run(request)

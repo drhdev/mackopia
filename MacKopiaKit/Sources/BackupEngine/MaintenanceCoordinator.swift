@@ -58,7 +58,7 @@ package struct MaintenanceCoordinator: Sendable {
         guard let repository = configuration.repositories.first(where: { $0.id == plan.repositoryID }) else {
             throw JobAdmissionError.repositoryUnavailable
         }
-        guard case .filesystem = repository.kind else { throw BackupOperationError.operationFailed }
+        guard repository.kind.isIntegratedBackend else { throw BackupOperationError.operationFailed }
         let result = try await coordinator.perform(plan: plan, repository: repository) { _ in
             guard try await store.currentConfiguration() == configuration else {
                 throw JobAdmissionError.configurationChanged

@@ -18,6 +18,13 @@ package struct LocalBackupOperationProtection: BackupOperationProtecting {
             guard let volume else { throw BackupOperationError.protectionUnavailable }
             directories.append(try ProtectedDirectory(path: path, volumeUUID: volume.uuid))
         }
+        // Remote browsing has neither a destination volume nor an original source to monitor.
+        // Restore writes still pass their output volume above; all operations retain the repo reservation.
+        if directories.isEmpty, case .s3 = repository.kind {
+            let result = try await operation()
+            try Task.checkCancellation()
+            return result
+        }
         do {
             let session = try await monitor.start(directories: directories)
             do {

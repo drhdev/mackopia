@@ -12,6 +12,8 @@ extension LocalBackupService {
         let coordinator = BackupOperationCoordinator(
             preflight: BackupPreflight(
                 prerequisites: BackupPrerequisitePreflight(binary: binary, secrets: secrets), gate: gate,
+                repositoryAccess: S3RepositoryAccess(
+                    executable: executable, home: home, temporary: temporary, secrets: secrets),
                 sourceAccess: sourceAccess), protection: protection)
         let verification = SnapshotVerificationEngine(
             store: store, coordinator: coordinator,

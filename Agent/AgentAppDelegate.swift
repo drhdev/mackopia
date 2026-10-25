@@ -52,6 +52,10 @@ final class AgentAppDelegate: NSObject, NSApplicationDelegate {
                     case .setup(let name, let destination, let source, let password, let create):
                         try await service.setup(
                             name: name, destination: destination, source: source, password: password, create: create)
+                    case .updateS3Credentials(let id, let setup):
+                        try await service.updateS3Credentials(repositoryID: id, setup: setup)
+                    case .setupS3(let name, let source, let setup, let create):
+                        try await service.setupS3(name: name, source: source, setup: setup, create: create)
                     case .createPlan(let name, let repositoryID, let source):
                         try await service.createPlan(name: name, repositoryID: repositoryID, source: source)
                     case .recoverConfiguration: try await service.recoverConfiguration()

@@ -8,12 +8,12 @@ package struct KopiaRestoreSampler: Sendable {
 
     package func samples(
         rootID: String, executable: URL, paths: KopiaRepositoryPaths, temporaryDirectory: URL,
-        user: String, backupPassword: String, lowPriority: Bool
+        user: String, backupPassword: String, lowPriority: Bool, s3: KopiaS3Authentication? = nil
     ) async throws -> [KopiaRestoreSample] {
         guard Self.validObjectID(rootID) else { throw KopiaProcessError.invalidRequest }
         let context = KopiaExecutionContext(
             executable: executable, paths: paths, temporaryDirectory: temporaryDirectory,
-            user: user, configuration: .file, backupPassword: backupPassword)
+            user: user, configuration: .file, backupPassword: backupPassword, s3: s3)
         var pending: [(String, [String])] = [(rootID, [])]
         var visited = Set<String>()
         var result: [KopiaRestoreSample] = []
@@ -50,14 +50,15 @@ package struct KopiaRestoreSampler: Sendable {
 
     package func restore(
         _ sample: KopiaRestoreSample, to destination: URL, executable: URL, paths: KopiaRepositoryPaths,
-        temporaryDirectory: URL, user: String, backupPassword: String, lowPriority: Bool
+        temporaryDirectory: URL, user: String, backupPassword: String, lowPriority: Bool,
+        s3: KopiaS3Authentication? = nil
     ) async throws {
         guard Self.validObjectID(sample.objectID), destination.isFileURL, destination.path.hasPrefix("/") else {
             throw KopiaProcessError.invalidRequest
         }
         let context = KopiaExecutionContext(
             executable: executable, paths: paths, temporaryDirectory: temporaryDirectory,
-            user: user, configuration: .file, backupPassword: backupPassword)
+            user: user, configuration: .file, backupPassword: backupPassword, s3: s3)
         // Kopia 0.23.1: atomic writes plus skipped permissions retain 0600 for a raw file-object restore.
         // Default non-atomic restore would create 0644, unsuitable for private temporary backup content.
         var request = context.request(for: .restoreSample(objectID: sample.objectID, destination: destination.path))

@@ -8,33 +8,59 @@ struct LocalSetupView: View {
         @Bindable var store = store
         VStack {
             Form {
-                Section("Lokales Speicherziel") {
-                    TextField("Name", text: $store.name)
-                    if let repositories = store.connection.state?.configuration?.repositories, !repositories.isEmpty {
+                Section("Speicherziel") {
+                    TextField("Name", text: $store.name).disabled(store.credentialRepository != nil)
+                    if store.credentialRepository == nil,
+                        let repositories = store.connection.state?.configuration?.repositories, !repositories.isEmpty
+                    {
                         Picker("Speicherziel", selection: $store.repositoryID) {
                             Text("Weiteres Speicherziel einrichten").tag(Optional<UUID>.none)
                             ForEach(repositories) { Text($0.name).tag(Optional($0.id)) }
                         }
                     }
-                    if store.repositoryID == nil {
-                        Picker("Einrichtung", selection: $store.create) {
-                            Text("Neu anlegen").tag(true)
-                            Text("Vorhandenes verbinden").tag(false)
+                    if store.needsDestination {
+                        if store.credentialRepository == nil {
+                            Picker("Einrichtung", selection: $store.create) {
+                                Text("Neu anlegen").tag(true)
+                                Text("Vorhandenes verbinden").tag(false)
+                            }
+                            Picker("Typ", selection: $store.useS3) {
+                                Text("Lokales Dateisystem").tag(false)
+                                Text("S3-kompatibel").tag(true)
+                            }
                         }
-                        LabeledContent("Speicherziel") {
-                            directoryLabel(store.destination)
-                            Button("Auswählen…") { store.selectDestination() }
-                        }
-                        if store.create {
-                            Text("Wähle einen leeren Ordner für dein neues Speicherziel.").foregroundStyle(.secondary)
+                        if store.useS3 {
+                            TextField("HTTPS-Endpunkt", text: $store.endpoint).disabled(
+                                store.credentialRepository != nil)
+                            TextField("Bucket", text: $store.bucket).disabled(store.credentialRepository != nil)
+                            TextField("Präfix", text: $store.prefix).disabled(store.credentialRepository != nil)
+                            TextField("Region", text: $store.region).disabled(store.credentialRepository != nil)
+                            SecureField("Zugriffsschlüssel", text: $store.accessKey)
+                            SecureField("Geheimer Zugriffsschlüssel", text: $store.secretKey)
+                            SecureField("Sitzungstoken (optional)", text: $store.sessionToken)
+                            Text(
+                                "Verwende einen vorhandenen Bucket und Zugangsdaten mit Lese-, Schreib-, Listen- und Löschrechten nur für das gewählte Präfix. Die Einrichtung prüft den Zugang; vorhandene Backups werden beim Anlegen nicht ersetzt."
+                            )
+                            .foregroundStyle(.secondary)
+                        } else {
+                            LabeledContent("Speicherziel") {
+                                directoryLabel(store.destination)
+                                Button("Auswählen…") { store.selectDestination() }
+                            }
+                            if store.create {
+                                Text("Wähle einen leeren Ordner für dein neues Speicherziel.").foregroundStyle(
+                                    .secondary)
+                            }
                         }
                     }
-                    LabeledContent("Quelle") {
-                        directoryLabel(store.source)
-                        Button("Quelle auswählen…") { store.selectSource() }
+                    if store.credentialRepository == nil {
+                        LabeledContent("Quelle") {
+                            directoryLabel(store.source)
+                            Button("Quelle auswählen…") { store.selectSource() }
+                        }
                     }
                 }
-                if store.repositoryID == nil {
+                if store.needsDestination {
                     Section("Backup-Passwort") {
                         SecureField("Backup-Passwort", text: $store.password)
                             .textContentType(store.create ? .newPassword : .password)
@@ -56,8 +82,12 @@ struct LocalSetupView: View {
                 }.keyboardShortcut(.cancelAction)
                 Spacer()
                 if store.connection.busy { ProgressView().controlSize(.small) }
-                Button("Einrichten") {
+                Button {
                     store.submit { dismiss() }
+                } label: {
+                    Text(
+                        store.credentialRepository == nil
+                            ? String(localized: "Einrichten") : String(localized: "Zugang prüfen und speichern"))
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(!store.valid || store.connection.busy)
@@ -75,3 +105,13 @@ struct LocalSetupView: View {
 }
 
 #Preview { LocalSetupView().environment(LocalSetupStore(connection: AgentConnection(preview: true))) }
+
+#Preview("S3") {
+    let store: LocalSetupStore = {
+        let store = LocalSetupStore(connection: AgentConnection(preview: true))
+        store.useS3 = true
+        store.bucket = "example-backups"
+        return store
+    }()
+    return LocalSetupView().environment(store)
+}

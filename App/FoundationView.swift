@@ -4,6 +4,7 @@ import SwiftUI
 struct FoundationView: View {
     enum Route: String, Hashable { case overview, plans, destinations, activity, restore }
     @Environment(AgentConnection.self) private var connection
+    @State private var credentialRepository: Repository?
     @State private var restoreStore: RestoreStore?
     @SceneStorage("navigation") private var savedRoute = Route.overview.rawValue
     private var selection: Binding<Route?> {
@@ -110,6 +111,9 @@ struct FoundationView: View {
         .sheet(isPresented: $connection.showSetup) {
             LocalSetupView().environment(LocalSetupStore(connection: connection))
         }
+        .sheet(item: $credentialRepository) { repository in
+            LocalSetupView().environment(LocalSetupStore(connection: connection, credentialRepository: repository))
+        }
         .sheet(item: $connection.editingPlan) {
             PlanEditorView().environment(PlanEditorStore(plan: $0, connection: connection))
         }
@@ -125,6 +129,11 @@ struct FoundationView: View {
                 LabeledContent(repository.name) {
                     if case .filesystem(let path, _) = repository.kind {
                         Text(path).lineLimit(1).truncationMode(.middle).help(path)
+                    } else if case .s3(let endpoint, let bucket, let prefix, _, _) = repository.kind {
+                        Text("\(endpoint) · \(bucket)/\(prefix)")
+                            .lineLimit(1).truncationMode(.middle)
+                        Button("Zugangsdaten aktualisieren…") { credentialRepository = repository }
+                            .disabled(!connection.canConfigure)
                     }
                 }
             }

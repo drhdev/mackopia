@@ -20,7 +20,7 @@ struct KopiaServerConfiguration: Sendable, CustomReflectable {
 
     init(
         executable: URL, repositoryID: UUID, homeDirectory: URL, temporaryDirectory: URL,
-        user: String, backupPassword: String, configuration: Configuration = .file
+        user: String, backupPassword: String, configuration: Configuration = .file, s3: KopiaS3Authentication? = nil
     ) throws {
         guard Self.isLocalPath(executable), Self.isLocalPath(homeDirectory),
             Self.isLocalPath(temporaryDirectory), !user.isEmpty, !user.utf8.contains(0),
@@ -32,7 +32,7 @@ struct KopiaServerConfiguration: Sendable, CustomReflectable {
             "HOME": homeDirectory.path, "USER": user, "TMPDIR": temporaryDirectory.path,
             "KOPIA_PASSWORD": backupPassword, "KOPIA_CACHE_DIRECTORY": paths.cacheDirectory.path,
             "KOPIA_LOG_DIR": paths.logDirectory.path,
-        ]
+        ].merging(s3?.environment ?? [:]) { _, new in new }
         var arguments = [
             "--log-dir=" + paths.logDirectory.path, "--no-progress", "--no-use-keychain",
             "--no-persist-credentials",

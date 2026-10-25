@@ -97,7 +97,7 @@ package actor ManualBackupEngine {
                 await started(job.plan.id)
             },
             operation: { job, repository, sources in
-                guard case .filesystem = repository.kind else { throw BackupOperationError.operationFailed }
+                guard repository.kind.isIntegratedBackend else { throw BackupOperationError.operationFailed }
                 guard job.plan.options.parallelism == nil, job.plan.options.uploadLimitMbps == nil,
                     !job.plan.options.ejectVolumeAfterBackup || handlesEjection
                 else { throw BackupOperationError.unsupportedOptions }
@@ -111,7 +111,7 @@ package actor ManualBackupEngine {
                 do {
                     let status = try await session.service.repositoryStatus()
                     let identity = try await session.service.sources()
-                    guard status.connected == true, status.storage == "filesystem",
+                    guard status.connected == true, status.storage == repository.kind.kopiaStorageType,
                         identity.localUsername == repository.identity.overrideUser,
                         identity.localHost == repository.identity.overrideHost
                     else { throw BackupOperationError.operationFailed }
