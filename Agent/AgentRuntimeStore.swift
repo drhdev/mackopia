@@ -12,8 +12,8 @@ final class AgentRuntimeStore {
     private var service: LocalBackupService?
 
     var statusSymbol: String {
-        if state?.activePlanID != nil { return "arrow.triangle.2.circlepath" }
-        if state?.issue != nil || state?.plans.contains(where: { $0.health.severity == .critical }) == true {
+        if state?.activePlanID != nil || state?.restore?.phase == .running { return "arrow.triangle.2.circlepath" }
+        if unavailable || state?.issue != nil || state?.plans.contains(where: { $0.health.severity != .ok }) == true {
             return "exclamationmark.triangle"
         }
         if state?.globalPause != nil { return "pause.circle" }
@@ -46,6 +46,10 @@ final class AgentRuntimeStore {
     }
     func resume(_ planID: UUID? = nil) { Task { try? await service?.resume(planID: planID) } }
     func stop(_ id: UUID) { Task { try? await service?.stop(id) } }
+    func cancelRestore() {
+        guard let id = state?.restore?.operationID else { return }
+        Task { try? await service?.cancelRestore(id) }
+    }
     func openApp() {
         let app = Bundle.main.bundleURL.deletingLastPathComponent().deletingLastPathComponent()
             .deletingLastPathComponent().deletingLastPathComponent()

@@ -7,9 +7,14 @@ struct AgentStatusView: View {
         VStack(alignment: .leading) {
             if store.unavailable {
                 Label("Hintergrunddienst nicht verfügbar", systemImage: "exclamationmark.triangle")
+            } else if store.state?.restore?.phase == .running {
+                Label("Wiederherstellung läuft", systemImage: "arrow.counterclockwise")
+                ProgressView().accessibilityLabel(Text("Wiederherstellung läuft"))
+                Button("Abbrechen") { store.cancelRestore() }
             } else if let id = store.state?.activePlanID {
                 Label("Backup läuft", systemImage: "arrow.triangle.2.circlepath")
-                ProgressView()
+                ProgressView(value: store.state?.progress?.fractionCompleted)
+                    .accessibilityLabel(Text("Backup läuft"))
                 Button("Stoppen") { store.stop(id) }
             } else if let plans = store.state?.configuration?.plans, !plans.isEmpty {
                 ForEach(plans) { plan in

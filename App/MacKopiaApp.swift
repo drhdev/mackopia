@@ -13,7 +13,8 @@ struct MacKopiaApp: App {
                         !connection.canRun)
                     Button("Wiederherstellen…") { connection.showRestore = true }.keyboardShortcut("r")
                     Button("Stoppen") { connection.stop() }.keyboardShortcut(".").disabled(
-                        connection.state?.activePlanID == nil && connection.state?.restore?.phase != .running)
+                        (connection.state?.activePlanID == nil && connection.state?.restore?.phase != .running)
+                            || connection.busy)
                 }
             }
         Settings { FoundationSettingsView().environment(connection) }

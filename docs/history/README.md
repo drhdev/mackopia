@@ -13,3 +13,6 @@ Archivierte Aufgaben und Prüfstände sind keine aktuellen Freigaben.
 
 - [SFTP-Spike/Einstieg, 2026-10-26](STATUS-Phase4-SFTP-Spike-2026-10-26.md): freigegebener Pipe-Transport, SSH-Lifecycle und WebDAV-Prüfbasis vor der SFTP-Produktionsanbindung.
 - [Implementierungsatlas vor SFTP, 2026-10-26](IMPLEMENTIERUNG-vor-SFTP-2026-10-26.md): ausführlicher Testatlas und WebDAV-Baseline.
+
+- [Phase-4/SFTP-Abschluss, 2026-10-26](STATUS-Phase4-SFTP-Abschluss-2026-10-26.md): vollständiger Remote-Stand auf main, 553 Package-Tests, WebDAV-Diagnose und Live-Ledger vor Phase 5.
+- [Phase-5-Qualitätsaudit, 2026-10-26](Phase5-Qualitaetsaudit-2026-10-26.md): Cache-/Bedienbefunde, automatisierte Evidenz und gesperrter Live-Audit.

@@ -1,6 +1,7 @@
 import BackupDomain
 import Foundation
 import KopiaCLI
+import OSLog
 import Persistence
 import Secrets
 import SystemIntegration
@@ -75,6 +76,11 @@ public actor LocalBackupService {
         guard !stopped else { throw LocalServiceIssue.unavailable }
         guard !started else { return }
         started = true
+        do { try RestorePreviewCache.removeAbandonedSessions(home: home) } catch {
+            // Cache failures block new previews, not independent scheduled backups.
+            Logger(subsystem: "com.example.MacKopia", category: "Restore")
+                .error("Abandoned preview cache could not be cleaned; check cache permissions")
+        }
         switch try await store.load() {
         case .loaded(let config): configuration = config
         case .safeMode: issue = .safeMode

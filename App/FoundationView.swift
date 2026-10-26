@@ -85,7 +85,8 @@ struct FoundationView: View {
                     Button("Bis morgen um 08:00") { connection.pause(.untilTomorrowMorning) }
                     Button("Unbegrenzt") { connection.pause(.indefinite) }
                     Button("Fortsetzen") { connection.resume() }
-                }.disabled(!connection.connected || connection.busy || connection.state?.restore?.phase == .running)
+                }.help("Pausieren").accessibilityLabel(Text("Pausieren"))
+                    .disabled(!connection.connected || connection.busy || connection.state?.restore?.phase == .running)
                 Button("Stoppen", systemImage: "stop.fill") { connection.stop() }
                     .help("Stoppen").accessibilityLabel(Text("Stoppen")).disabled(
                         (connection.state?.activePlanID == nil && connection.state?.restore?.phase != .running)
@@ -150,6 +151,7 @@ struct FoundationView: View {
                 if let progress = connection.state?.progress {
                     Section("Backup läuft") {
                         ProgressView(value: progress.fractionCompleted)
+                            .accessibilityLabel(Text("Backup läuft"))
                         if let bytes = progress.uploadedBytes {
                             Text(bytes, format: .byteCount(style: .file)).monospacedDigit()
                         }

@@ -15,7 +15,8 @@ struct PlanEditorView: View {
                     ForEach(store.sources) { source in
                         LabeledContent {
                             Button("Entfernen", systemImage: "minus") { store.removeSource(source.id) }
-                                .help("Quelle entfernen").disabled(store.sources.count <= 1)
+                                .help("Quelle entfernen").accessibilityLabel(Text("Quelle entfernen")).disabled(
+                                    store.sources.count <= 1)
                         } label: {
                             Label(source.path, systemImage: "folder").lineLimit(1).truncationMode(.middle).help(
                                 source.path)

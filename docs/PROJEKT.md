@@ -1508,7 +1508,10 @@ Policy-Übertragung; der Aufrufer muss Quellidentität und Aktualität weiterhin
   Größere Seiten/Kataloge werden ausdrücklich abgewiesen statt als vollständig leer oder vollständig geladen dargestellt.
   Der Snapshot-Selektor behält die vollständige fremde Benutzer-/Rechneridentität; lokale Originalquellen sind nicht nötig.
   Quick Look stellt ausschließlich Dateien bis 50 MB unter einem privaten Cache-Sitzungsordner wieder her und
-  löscht die eigene Sitzung beim Schließen bzw. Dienst-Shutdown. Ein harter Prozessabbruch kann Cache-Reste hinterlassen.
+  löscht die eigene Sitzung beim Schließen bzw. Dienst-Shutdown. Beim Dienststart und vor einer neuen Vorschau
+  werden verwaiste UUID-Sitzungsordner im eigenen Cache entfernt. Nur eigene reguläre 0700-Verzeichnisse
+  unter einem eigenen symlinkfreien 0700-Cache gelten als Sitzungen; fremde Namen/Symlinks bleiben erhalten.
+  Fehlgeschlagene Bereinigung blockiert neue Vorschauen, nicht unabhängige Backups; beim Start wird sie protokolliert.
   Beschreibung/Nutzer-Pin sind bearbeitbar; Sicherheits-Pins werden nie entfernt, geänderte Manifest-IDs frisch geladen.
 - **Aktivität**: `Table` aller `JobRun`s (Plan, Trigger, Start, Dauer, Ergebnis, Datenmenge), Detail mit Fehlerliste
   (Datei + Grund) und „Kopia-Log anzeigen“.
@@ -1917,6 +1920,7 @@ Neuere ausdrücklich ersetzende Entscheidungen haben Vorrang; alte Phasen-/Platt
 
 | 2026-10-26 | SFTP-Pipe-Ausnahme ausdrücklich durch Nutzer freigegeben | Dieselben Schutzregeln wie WebDAV: Credentials/entschlüsselter Schlüssel ausschließlich im RAM, frische anonyme Pipe pro Prozess, geschütztes Laufzeitverzeichnis, gemeinsame nicht geheime Wartungssperre und Cleanup; keine reguläre Secret-Datei oder Config-Mutation. Host-Key-Freigabe bleibt separat erforderlich. |
 | 2026-10-26 | SFTP-Schlüsselpfad integriert: vertrauenswürdig übernommener öffentlicher Host-Key mit Fingerprint/Freigabe, atomare bekannte Host-Identität, Keychain-Envelope und RAM-/Pipe-Lifecycle | Präzisiert die freigegebene Pipe-Ausnahme: Create-only erhält Schlüssel-Pipe, Connect/Runtime schreiben keine Connection. RSA-PEM-Passphrase nur an System-OpenSSL im Environment, Schlüssel nur über Pipe; normalisierter Schlüssel im gemeinsamen Keychain-Item, Passphrase verworfen. Kein SSH-Passwort oder verschlüsseltes OpenSSH ohne Nachweis. XPC 7, gemeinsame Gates, fremde Owner bleiben erhalten. |
+| 2026-10-26 | Private Quick-Look-Reste beim Dienststart und vor neuer Vorschau bereinigen | Nur UUID-Sitzungen mit eigenem Besitzer, 0700 und regulärem Verzeichnistyp im symlinkfreien privaten Cache entfernen. Unbekannte Dateien und Symlinks unangetastet lassen. Fehler sperren die Vorschau und werden beim Start ohne Pfade protokolliert; unabhängige Backups bleiben möglich. |
 
 ---
 

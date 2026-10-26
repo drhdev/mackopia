@@ -799,6 +799,12 @@
     },
     "Abbrechen": {
       "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abbrechen"
+          }
+        },
         "en": {
           "stringUnit": {
             "state": "translated",
@@ -1253,6 +1259,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "Check the status in MacKopia for the next step."
+          }
+        }
+      }
+    },
+    "Wiederherstellung läuft": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wiederherstellung läuft"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Restore in progress"
           }
         }
       }

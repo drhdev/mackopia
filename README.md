@@ -47,7 +47,7 @@ The recovery kit describes the pipe transport and includes no credentials.
 Use the latest stable Xcode and its bundled Swift/SwiftUI SDK (verified baseline: Xcode 27.1, Swift 6.4, macOS 27 SDK).
 Open `MacKopia.xcodeproj` and select the shared `MacKopia` scheme.
 The UI and menu bar connect local setup, plan editing, manual backup/stop, status and history to the background service.
-Automatic scheduling, the full restore browser, S3 and WebDAV are integrated; SFTP is the next backend integration.
+Automatic scheduling, the full restore browser, S3, WebDAV and SFTP are integrated.
 Only macOS 27.x on arm64 is supported: no Intel/Rosetta or older-OS compatibility paths.
 The service is embedded under `Contents/Library/LoginItems`; the matching job plist is generated
 under `Contents/Library/LaunchAgents`. Service registration is explicit through the app and Settings UI.

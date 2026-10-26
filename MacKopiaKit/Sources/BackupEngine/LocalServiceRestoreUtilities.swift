@@ -44,15 +44,8 @@ extension LocalBackupService {
         guard !components.isEmpty else { throw LocalServiceIssue.invalidRequest }
         try availableForMutation()
         try clearRestorePreview()
-        let root = home.appendingPathComponent("Library/Caches/MacKopia/QuickLook")
-        guard root.resolvingSymlinksInPath().path == root.path else { throw LocalServiceIssue.destination }
-        try FileManager.default.createDirectory(
-            at: root, withIntermediateDirectories: true,
-            attributes: [.posixPermissions: 0o700])
-        var info = stat()
-        guard lstat(root.path, &info) == 0, info.st_uid == getuid(), info.st_mode & 0o7777 == 0o700,
-            info.st_mode & S_IFMT == S_IFDIR
-        else { throw LocalServiceIssue.destination }
+        try RestorePreviewCache.removeAbandonedSessions(home: home)
+        let root = try RestorePreviewCache.prepare(home: home)
         let session = root.appendingPathComponent(UUID().uuidString)
         guard mkdir(session.path, 0o700) == 0 else { throw LocalServiceIssue.destination }
         previewDirectory = session

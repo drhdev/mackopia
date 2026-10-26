@@ -129,6 +129,27 @@ struct DailyServiceTests {
         await service.shutdown()
     }
 
+    @Test func startupRemovesAbandonedPreviewButRepeatedStartPreservesLiveSession() async throws {
+        let root = try KopiaProcessTests().temporaryRoot().resolvingSymlinksInPath()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let cache = try RestorePreviewCache.prepare(home: root)
+        let stale = cache.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(
+            at: stale, withIntermediateDirectories: false,
+            attributes: [.posixPermissions: 0o700])
+        try Data("private preview".utf8).write(to: stale.appendingPathComponent("preview"))
+        let service = try makeService(root, time: SchedulerTestClock(date: .now))
+        try await service.start()
+        #expect(!FileManager.default.fileExists(atPath: stale.path))
+        let live = cache.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(
+            at: live, withIntermediateDirectories: false,
+            attributes: [.posixPermissions: 0o700])
+        try await service.start()
+        #expect(FileManager.default.fileExists(atPath: live.path))
+        await service.shutdown()
+    }
+
     private func makeService(
         _ root: URL, time: SchedulerTestClock, monitor: any SystemEventMonitoring = RuntimeMonitor()
     ) throws -> LocalBackupService {

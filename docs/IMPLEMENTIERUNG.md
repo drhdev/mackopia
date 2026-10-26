@@ -82,8 +82,11 @@ Alte Phasen-/Batch-Nummern in Kommentaren und Protokollen sind historische Refer
   NFC/NFD-Mehrdeutigkeit und Symlink-Abstieg blockieren. Fremde Benutzer-/Rechneridentitäten bleiben vollständig.
 - Ausgabe: neuer privater UUID-Ordner unter gewähltem Elternordner; kein registriertes Speicherziel als Ausgabe.
   Overwrite-Schalter aus, Restored-SUCCESS nur ohne Skipped Files/Ignored Errors; Teilresultate bei Abbruch erhalten.
-- Quick Look: Dateirestore bis 50 MB unter privater Cache-Sitzung; explizites Clear/Schließen und Shutdown löschen sie.
-- App/RestoreStore besitzt Auswahl/Filter/Sortierung/Suche/Dialog; Views bleiben bei Systemkomponenten.
+- Quick Look: Dateirestore bis 50 MB unter privater Cache-Sitzung; Clear/Schließen und Shutdown löschen sie.
+  `RestorePreviewCache` bereinigt beim Start/vor neuer Vorschau nur eigene private UUID-Verzeichnisse;
+  Symlinks/unbekannte Namen bleiben erhalten, unsicherer Cache sperrt Vorschauen. Dienststartfehler nur im Logger.
+- App/RestoreStore besitzt Auswahl/Filter/Sortierung/Suche/Dialog; Menüleiste zeigt/stoppt auch Restores.
+  Menükommando/Toolbar teilen Busy-Sperre; explizite A11y-Labels für Fortschritt/Pause/Quellenentfernung.
   RecoveryKit nutzt NSPrintOperation einschließlich PDF und enthält keine Passwörter; Angebot nach Einrichtung.
 
 ## S3-Pfad
@@ -122,7 +125,7 @@ Alte Phasen-/Batch-Nummern in Kommentaren und Protokollen sind historische Refer
   größere Bestände werden abgewiesen. Suche: 256 Verzeichnisse/10.000 Einträge/500 Treffer/Tiefe 64, sichtbare Grenze.
 - Kein Überschreiben/Originalort-Restore freigegeben; neuer privater Ordner bleibt der sichere Standard.
 - Live-Restore-/Quick-Look-Durchgang, Drucklayout/PDF und DE/EN-/A11y-Abnahme ausstehend.
-- Nach hartem Dienstabbruch können private Quick-Look-Cache-Reste bleiben; regulärer Close/Shutdown löscht die Sitzung.
+- Nach hartem Dienstabbruch bleiben Vorschauen bis zum nächsten Dienststart; Startup-Cleanup ist regressionsgeprüft.
 
 - Lokaler manueller Nutzerworkflow ist verdrahtet und temporär integriert geprüft; installierte
   SMAppService-/Keychain-/FDA-Abnahme konnte ohne Computer-Use-Freigabe nicht durchgeführt werden.
