@@ -2,7 +2,7 @@
 
 ## Umfang und Codezustand
 
-Branch `codex/p5-native-quality`, Basis: integrierter Phase-4-Stand auf `main`.
+Branch `codex/p5-native-quality`, Produktionscode `70309cb`, [Draft PR #7](https://github.com/drhdevorg/mackopia/pull/7). Basis: integrierter Phase-4-Stand auf `main`.
 Xcode 27.1 (27A9275), Swift 6.4, Sprachmodus 6, SDK macOS 27, natives arm64.
 Kopia 0.23.1, unveränderte Dependencies/Entitlements/Buildphasen/XPC-Version 7.
 Dies ist ein automatisierter und statischer Audit mit konkretem Live-Blocker, keine abgeschlossene UI-Abnahme.
@@ -43,6 +43,8 @@ Der Test verwendet ausschließlich temporäre Homes, keine Nutzerdaten und keine
   Gezielte Diagnose per `xcrun xctest` auf gebautem Bundle: **4 Tests bestanden**, 0,063 s;
   `/tmp/mackopia-p5-bundle-direct.log`. Das ersetzt keinen erfolgreichen kombinierten Xcode-Lauf.
   Eigenständiger Xcode-Build **erfolgreich**, `/tmp/mackopia-p5-build.log`.
+  Nach bestätigtem Entsperren `test-without-building` erneut ohne Testergebnis im IDE-Start;
+  bewusst abgebrochen, `/tmp/mackopia-p5-xcode-unlocked.log`. Keine weitere Vollsuite wiederholt.
 - Erster Compile-Versuch fand einen fehlenden `BackupDomain`-Import im neuen Helper; vor der
   erfolgreichen Package-Vollprüfung korrigiert. Keine Assertions oder Sicherheitsregeln abgeschwächt.
 
@@ -50,13 +52,16 @@ Der Test verwendet ausschließlich temporäre Homes, keine Nutzerdaten und keine
 
 Computer Use inventarisierte native Oberflächen erfolgreich. Der Versuch, das frisch gebaute
 `MacKopia.app` zu öffnen, meldete: Mac gesperrt, automatisches Entsperren nicht möglich.
-Der Nutzer wurde um manuelles Entsperren gebeten. Keine Screenshots, keine UI-/VoiceOver-Abnahme,
-kein registrierter Dienst und keine Instruments-Messwerte werden daraus abgeleitet.
+Der Nutzer hat auf Nachfrage „entsperrt“ bestätigt. Anschließend liefen native `getApp`-Aufrufe
+für das gebaute MacKopia nach 30 und 60 Sekunden in Timeout/Kernel-Reset; auch `getApp` für den
+bereits laufenden Finder scheiterte nach 47 Sekunden. `getState` liefert weiterhin das App-Inventar.
+Damit bleibt der native Automationszugriff blockiert; ein MacKopia-Startfehler ist daraus nicht belegt.
+Keine Screenshots, UI-/VoiceOver-Abnahme, Dienstregistrierung oder Instruments-Messwerte ableiten.
 `xcrun xctrace list templates` funktioniert nach Cache-Freigabe; eine Template-Liste ist kein Profil.
 
-Nach Entsperren, Besitzer Agent + Nutzer:
+Nach Wiederherstellung der nativen Computer-Use-Verbindung, Besitzer Agent + Nutzer:
 
-1. Gebautes App-Bundle öffnen. Ohne Dienst: klare Offline-Aktion, ⌘N/⌘B/⌘. gesperrt;
+1. Finder-AX-Zugriff nachweisen, dann gebautes App-Bundle öffnen. Ohne Dienst: klare Offline-Aktion, ⌘N/⌘B/⌘. gesperrt;
    ⌘, öffnet native Einstellungen, ⌘R führt nach Verbindung in Restore. Keine automatische Registrierung.
 2. Registrierten Dienst und Keychain/FDA erst mit den nötigen bewussten Systemfreigaben aktivieren.
    Nur neue lokale Temp-Quelle/Temp-Speicherziel verwenden, nie bestehende Nutzerziele.
