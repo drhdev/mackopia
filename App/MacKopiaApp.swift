@@ -6,7 +6,7 @@ struct MacKopiaApp: App {
     var body: some Scene {
         WindowGroup { FoundationView().environment(connection) }
             .commands {
-                CommandGroup(after: .newItem) {
+                CommandGroup(replacing: .newItem) {
                     Button("Neuer Plan…") { connection.showSetup = true }.keyboardShortcut("n").disabled(
                         !connection.canConfigure)
                     Button("Jetzt sichern") { connection.runSelected() }.keyboardShortcut("b").disabled(

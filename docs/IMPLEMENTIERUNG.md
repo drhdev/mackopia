@@ -85,6 +85,10 @@ Alte Phasen-/Batch-Nummern in Kommentaren und Protokollen sind historische Refer
 - Quick Look: Dateirestore bis 50 MB unter privater Cache-Sitzung; Clear/Schließen und Shutdown löschen sie.
   `RestorePreviewCache` bereinigt beim Start/vor neuer Vorschau nur eigene private UUID-Verzeichnisse;
   Symlinks/unbekannte Namen bleiben erhalten, unsicherer Cache sperrt Vorschauen. Dienststartfehler nur im Logger.
+- `LocalSetupSheet`/`PlanEditorSheet` besitzen Editor-Stores je Präsentation über `@State`;
+  Verbindungsevents dürfen Eingaben nicht zurücksetzen. ⌘N ersetzt den Standard-Neues-Fenster-Befehl.
+- Registrierung: `.notFound` verhindert die explizite SMAppService-Anmeldung nicht mehr; die
+  Signaturprüfung bleibt davor. Persistente sanitisierte DE/EN-Fehlerrückmeldung auch offline/in Einstellungen.
 - App/RestoreStore besitzt Auswahl/Filter/Sortierung/Suche/Dialog; Menüleiste zeigt/stoppt auch Restores.
   Menükommando/Toolbar teilen Busy-Sperre; explizite A11y-Labels für Fortschritt/Pause/Quellenentfernung.
   RecoveryKit nutzt NSPrintOperation einschließlich PDF und enthält keine Passwörter; Angebot nach Einrichtung.
@@ -115,6 +119,8 @@ Alte Phasen-/Batch-Nummern in Kommentaren und Protokollen sind historische Refer
 - S3/WebDAV/SFTP-`ServiceIntegrationTests`: echte temporäre Backends, Dienst/Restore, Zugangsschutz und Secret-Negativscan.
 - `AgentSigningIdentityTests`/`LocalServiceTransportTests`: exakte Bundle-Vertrauensanker, Manipulation und native XPC-Peers.
 - `Tests/BundleLayoutTests.swift`: gebautes Produkt, Signaturen, Hardened Runtime und Plattformmetadaten.
+  Xcode `build test` nach Launcher-Timeout wieder grün (4 Tests, unveränderter Produktionscode);
+  keine automatisierten XCUITests vorhanden, manueller UI-/A11y-Audit weiterhin offen.
 - `KopiaContractTests` + Fixtures/kopia-0.23.1; Pin unverändert, nur arm64 im Fetch-/Embed-Pfad.
 - `Scripts/tests`: Download-/Probe-Sicherheit; SFTP-SSH-Fixture mit isoliertem Agent-Socket und privaten Schlüsseln im RAM.
 - Vollständiger früherer Testatlas: [Stand vor SFTP](history/IMPLEMENTIERUNG-vor-SFTP-2026-10-26.md).

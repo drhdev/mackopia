@@ -60,12 +60,28 @@ private final class FakeService: AgentServiceManaging {
 @Test @MainActor func missingJobAndRegistrationFailuresAreTyped() {
     let service = FakeService()
     let registration = AgentServiceRegistration(service: service, validateSignature: {})
-    service.status = .notFound
-    #expect(throws: AgentServiceError.unavailable) { try registration.register() }
-    #expect(service.registerCalls == 0)
     service.status = .notRegistered
     service.afterRegister = .notRegistered
     service.failure = .invalidReply
+    #expect(throws: AgentServiceError.registrationFailed) { try registration.register() }
+    #expect(service.registerCalls == 1)
+}
+
+@Test @MainActor func missingStatusStillAllowsExplicitRegistration() throws {
+    let service = FakeService()
+    service.status = .notFound
+    let registration = AgentServiceRegistration(service: service, validateSignature: {})
+    try registration.register()
+    #expect(service.registerCalls == 1)
+    #expect(registration.status == .enabled)
+}
+
+@Test @MainActor func missingServiceRegistrationStillReportsSystemFailure() {
+    let service = FakeService()
+    service.status = .notFound
+    service.afterRegister = .notFound
+    service.failure = .unavailable
+    let registration = AgentServiceRegistration(service: service, validateSignature: {})
     #expect(throws: AgentServiceError.registrationFailed) { try registration.register() }
     #expect(service.registerCalls == 1)
 }

@@ -78,3 +78,70 @@ Nach Wiederherstellung der nativen Computer-Use-Verbindung, Besitzer Agent + Nut
 Weitere bekannte Bedienlücken zur integrierten Prüfung: Quellen-Drag-and-drop, Entfernen per Entf/Undo,
 Menüleisten-Restore-Navigation und Fehleraktionen sowie Quellen-/Snapshot-Pagination. Bestehende Grenzen
 werden bis zur Implementierung weiter angezeigt; diese Korrekturen behaupten keine vollständige Phase 5.
+
+
+## Live-Wiederaufnahme: Registrierung und Editorzustand
+
+Native Finder- und MacKopia-AX-Verbindung am 26.10. wieder verfügbar. Der Nutzer hat die
+Dienstregistrierung und ausschließlich neue temporäre Testdaten explizit freigegeben.
+Offline-Fenster, gesperrte Backup-Aktionen, ⌘R-Navigation und native ⌘,-Einstellungen live geprüft.
+Screenshots im Chat zeigen die deutsche Oberfläche; keine vollständige DE/EN-/Kontrast-/VoiceOver-Abnahme.
+
+Live reproduzierte Befunde:
+
+- Deutsche Sidebar-Texte wurden bei 144 pt abgeschnitten; 200 pt Mindestbreite/220 pt Idealbreite
+  zeigen Backup-Pläne und Wiederherstellen vollständig. Native Sidebar bleibt erhalten.
+- Registrierungsfehler wurden nur in einem von der Offline-Ansicht ausgeblendeten Feld gespeichert
+  und vom Reconnect überschrieben. Eigene `registrationMessage` bleibt im Offline-Fenster und den
+  Einstellungen sichtbar; Signaturfehler getrennt, alle Texte DE/EN, keine rohen Systemfehler.
+- `SMAppService.status` lieferte vor Erstregistrierung `.notFound`; der bisherige Guard rief
+  `register()` nicht auf. BTM-Log: `effectiveItemDisposition: record not found` für unsere Plist,
+  obwohl Bundle-/Signaturtests die eingebettete Plist und das Programm bestätigen. Die explizite
+  Registrierung wird nun nach unveränderter Signaturprüfung an macOS delegiert. Regression zuerst
+  rot (`missingStatusStillAllowsExplicitRegistration`), zusätzliche echte Systemfehler bleiben typisiert.
+  **Live bestätigt:** nach Neustart registriert, XPC verbunden, Übersicht „Noch kein Backup-Plan“.
+- ⌘N öffnete wegen des Standardbefehls ein weiteres Fenster. Der Planbefehl ersetzt jetzt `.newItem`.
+- Bei der Quellenwahl verlor der Assistent zuvor Name und Ziel. Die Sheet-Closures erzeugten Stores
+  bei Parent-Updates erneut. `LocalSetupSheet` und `PlanEditorSheet` besitzen den Store als `@State`
+  je Präsentation; das gilt auch für Credential-Sheets. Live-Nachprüfung erfolgreich: Name und Speicherziel bleiben nach Quellenwahl erhalten; ⌘N öffnet den Assistenten.
+
+Temp-Workflow: nur neue Ordner unter `/private/tmp/mackopia-live-audit-xp05r3_k` (Quelle mit Audit.txt,
+leeres Ziel, Restore-Elternordner). Speicherziel anschließend im nativen Assistenten erfolgreich angelegt; Generator verwendet, Passwortanzeige vor Einrichtung wieder verborgen.
+Registrierter Dienst bleibt nach ausdrücklicher Nutzerfreigabe aktiv; keine FDA-Freigabe vorgenommen.
+Systemlogs nur lokal unter `/tmp/mackopia-p5-registration*.log`, keine Rohlogs ins Repository.
+
+Prüfdiagnose:
+
+- Finaler Registrierungsstand: Xcode `build test` grün, 4 Bundle-/Signaturtests, keine Compilerwarnung;
+  `/tmp/mackopia-p5-live-xcode-final.log`, Ergebnis `Run-MacKopia-2026.10.26_15-22-28-+0100.xcresult`.
+- Erster Package-Lauf verwendete `/usr/bin/python3` mit LibreSSL 2.8.3; TLS-Fixtures starteten nicht.
+  Wiederholung mit `MACKOPIA_TEST_PYTHON` auf gebündeltem Python/OpenSSL 3.5.8.
+- Wiederholter paralleler Lauf vor finaler Registrierung: 557 Tests, WebDAV-Verifikation fehlgeschlagen.
+  Paralleler finaler Registrierungsstand: 559 Tests, 15 Folgefehler in den drei Remote-Backups;
+  lokaler Backup-/Restorepfad grün. Kein Zusammenhang mit Registrierung bewiesen.
+  Logs `/tmp/mackopia-p5-live-package-tls.log` und `/tmp/mackopia-p5-live-package-final.log`.
+- Serielle Diagnose auf demselben Package-Code und finaler Editor-Build laufen; Ergebnisse in STATUS.md
+  nachtragen. Keine Assertions oder Schutzprüfungen abgeschwächt.
+
+Finale Prüfungen nach Sheet-Integration: Xcode `build test` grün, 4 Bundle-/Signaturtests,
+`/tmp/mackopia-p5-editors-xcode-final.log`, `Run-MacKopia-2026.10.26_19-05-04-+0100.xcresult`.
+Keine Compilerwarnung. Beim ersten Editor-Build fehlten die neuen Dateien in der expliziten
+Xcode-Dateiliste; vor finalem Lauf ergänzt. Keine neuen Buildphasen/Entitlements/Dependencies.
+Package final: **559 Tests / 105 Suites bestanden**, seriell 289,839 s, einschließlich WebDAV
+(163,881 s); `/tmp/mackopia-p5-live-package-serial.log`. Parallele Fehler damit eingegrenzt,
+Ursache unter Last nicht isoliert. Format/Diff sauber.
+Nach Neubau den leeren registrierten Dienst mit `launchctl kickstart -k` und die UI neu gestartet,
+damit die strikten Signaturanker beider Prozesse auf denselben Disk-Stand zeigen; danach XPC verbunden.
+
+Live-Abschluss des aktuellen Teilwegs: lokales Temp-Ziel erfolgreich eingerichtet, Plan in Übersicht
+sichtbar, Recovery-Kit angeboten. ⌘B erreicht den registrierten Dienst. Der fehlende FDA-Nachweis
+blockiert den Lauf konservativ mit „Quellenzugriff nicht bestätigt“ und Aktion zum Öffnen der
+Systemeinstellungen; kein Backup-/Restore-Erfolg behauptet. Nutzer hat FDA-Freigabe ausdrücklich abgelehnt; der betroffene Live-Lauf bleibt gesperrt. Keine vorhandenen Nutzerziele benutzt.
+
+Erste echte Instruments-Messung: Activity Monitor, 30 s am finalen MacKopia-App-Prozess,
+ruhendes Fenster nach sicherem FDA-Block, 25 Samples bis 29,505 s. CPU über 24 gültige Samples:
+Mittel 0,211 %, Maximum 4,975 %; physischer Footprint 58,42–58,55 MiB; gemeldete App-Disk-
+Lese-/Schreibraten durchgehend 0 Bytes/s. Kein Dienst-/Backup-Profil, keine Fortschrittsfrequenzmessung
+und kein vollständiger 60-s-Release-Benchmark. Lokales Artefakt `/tmp/mackopia-p5-idle.trace`,
+Export `/tmp/mackopia-p5-idle-metrics.xml`; keine Trace-/Environmentdaten ins Repository übernommen.
+Export benötigte Instruments-Cache-Freigabe; Sandbox-Versuch scheiterte vor der erfolgreichen Auswertung.

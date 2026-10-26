@@ -5,6 +5,9 @@ struct FoundationSettingsView: View {
     var body: some View {
         Form {
             Section("Hintergrunddienst") {
+                if let message = connection.registrationMessage {
+                    Label(message, systemImage: "exclamationmark.triangle")
+                }
                 Button("Hintergrunddienst aktivieren") { connection.enable() }
                 Button("Anmeldeobjekte öffnen…") { connection.openLoginSettings() }
                 Button("Erneut verbinden") { connection.reconnect() }

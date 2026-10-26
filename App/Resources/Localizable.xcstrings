@@ -2508,6 +2508,26 @@
           }
         }
       }
+    },
+    "Hintergrunddienst nicht aktiviert. Die App-Signatur konnte nicht geprüft werden. Öffne eine unveränderte MacKopia-App und versuche es erneut.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Background service not enabled. The app signature could not be verified. Open an unmodified MacKopia app and try again."
+          }
+        }
+      }
+    },
+    "Hintergrunddienst nicht aktiviert. Prüfe MacKopia in den Anmeldeobjekten und versuche es erneut.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Background service not enabled. Check MacKopia in Login Items and try again."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

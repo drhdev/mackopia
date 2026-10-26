@@ -21,6 +21,7 @@ struct FoundationView: View {
                 Label("Wiederherstellen", systemImage: "arrow.counterclockwise").tag(Route.restore)
                 Label("Aktivität", systemImage: "clock").tag(Route.activity)
             }
+            .navigationSplitViewColumnWidth(min: 200, ideal: 220)
         } detail: {
             VStack(spacing: 0) {
                 if !connection.connected {
@@ -28,9 +29,10 @@ struct FoundationView: View {
                         Label("Hintergrunddienst nicht aktiv", systemImage: "exclamationmark.triangle")
                     } description: {
                         Text("Aktiviere den Hintergrunddienst, damit MacKopia Backups ausführen kann.")
+                        if let message = connection.registrationMessage { Text(message) }
                     } actions: {
                         Button("Hintergrunddienst aktivieren") { connection.enable() }
-                        if connection.requiresApproval {
+                        if connection.requiresApproval || connection.registrationMessage != nil {
                             Button("Anmeldeobjekte öffnen…") { connection.openLoginSettings() }
                         }
                         Button("Erneut verbinden") { connection.reconnect() }
@@ -110,13 +112,13 @@ struct FoundationView: View {
             Text("Die letzte gültige Sicherung ersetzt die aktuelle Konfiguration. Deine Backups bleiben erhalten.")
         }
         .sheet(isPresented: $connection.showSetup) {
-            LocalSetupView().environment(LocalSetupStore(connection: connection))
+            LocalSetupSheet(connection: connection)
         }
         .sheet(item: $credentialRepository) { repository in
-            LocalSetupView().environment(LocalSetupStore(connection: connection, credentialRepository: repository))
+            LocalSetupSheet(connection: connection, credentialRepository: repository)
         }
         .sheet(item: $connection.editingPlan) {
-            PlanEditorView().environment(PlanEditorStore(plan: $0, connection: connection))
+            PlanEditorSheet(plan: $0, connection: connection)
         }
     }
 

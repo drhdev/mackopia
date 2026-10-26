@@ -24,8 +24,9 @@ public struct AgentServiceRegistration {
         try validateSignature()
         switch status {
         case .enabled, .requiresApproval: return
-        case .notFound: throw AgentServiceError.unavailable
-        case .notRegistered:
+        case .notRegistered, .notFound:
+            // macOS can report a missing BTM record before the first registration even when the
+            // sealed bundle contains the service. Let SMAppService validate the explicit request.
             do { try service.register() } catch {
                 // SMAppService may report launch denial after recording a request for user approval.
                 guard status == .requiresApproval else { throw AgentServiceError.registrationFailed }

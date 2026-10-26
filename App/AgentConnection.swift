@@ -9,6 +9,7 @@ final class AgentConnection {
     var connected = false
     var busy = false
     var message: String?
+    var registrationMessage: String?
     var showSetup = false
     var showRecovery = false
     var showActivity = false
@@ -61,7 +62,25 @@ final class AgentConnection {
         }
     }
     func enable() {
-        do { try registration?.register(); reconnect() } catch { message = Self.description(.unavailable) }
+        registrationMessage = nil
+        do {
+            guard let registration else { throw AgentServiceError.invalidIdentity }
+            try registration.register()
+            reconnect()
+        } catch {
+            switch error as? AgentServiceError {
+            case .signingRequired, .invalidIdentity:
+                registrationMessage = String(
+                    localized:
+                        "Hintergrunddienst nicht aktiviert. Die App-Signatur konnte nicht geprüft werden. Öffne eine unveränderte MacKopia-App und versuche es erneut."
+                )
+            default:
+                registrationMessage = String(
+                    localized:
+                        "Hintergrunddienst nicht aktiviert. Prüfe MacKopia in den Anmeldeobjekten und versuche es erneut."
+                )
+            }
+        }
     }
     func reconnect() { observation?.cancel(); observation = nil; start() }
     func openLoginSettings() { registration?.openLoginItemsSettings() }
