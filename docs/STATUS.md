@@ -7,7 +7,8 @@ Historische Evidenz bleibt im [Archiv](history/README.md).
 
 **Phase 4: WebDAV vom Assistenten bis Backup/Restore integriert und automatisiert geprüft.**
 Phase 1–3 und S3 bleiben integriert. Nächster Backend-Block nach WebDAV: SFTP.
-Lokaler Branch `codex/p4-webdav`, Basis `codex/p4-s3`; kein Push/PR, keine echte Remote-Infrastruktur angelegt.
+Branch `codex/p4-webdav`, Basis `codex/p4-s3`; [Draft-PR #5](https://github.com/drhdevorg/mackopia/pull/5).
+Beide Branches gepusht; keine echte Remote-Backup-Infrastruktur angelegt.
 
 ## In progress
 
