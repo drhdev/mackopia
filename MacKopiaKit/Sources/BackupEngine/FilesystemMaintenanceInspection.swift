@@ -35,7 +35,7 @@ package struct FilesystemMaintenanceInspection: MaintenanceInspecting, Maintenan
             executable: executable,
             paths: KopiaRepositoryPaths(repositoryID: repository.id, homeDirectory: homeDirectory),
             temporaryDirectory: temporaryDirectory, user: user, backupPassword: credentials.password,
-            lowPriority: lowPriority, s3: credentials.s3)
+            lowPriority: lowPriority, s3: credentials.s3, webDAV: credentials.webDAV)
     }
 
     package func runFull(repository: Repository, lowPriority: Bool) async throws {
@@ -44,12 +44,13 @@ package struct FilesystemMaintenanceInspection: MaintenanceInspecting, Maintenan
             executable: executable,
             paths: KopiaRepositoryPaths(repositoryID: repository.id, homeDirectory: homeDirectory),
             temporaryDirectory: temporaryDirectory, user: user, backupPassword: credentials.password,
-            lowPriority: lowPriority, s3: credentials.s3)
+            lowPriority: lowPriority, s3: credentials.s3, webDAV: credentials.webDAV)
     }
 
     private func credentials(repository: Repository) async throws -> RepositoryCredentials {
         try Task.checkCancellation()
-        let credentials = try await RepositoryCredentials.read(repository: repository, secrets: secrets)
+        let credentials = try await RepositoryCredentials.read(
+            repository: repository, secrets: secrets, homeDirectory: homeDirectory)
         try KopiaFilesystemBinding.validate(repository: repository, homeDirectory: homeDirectory)
         return credentials
     }

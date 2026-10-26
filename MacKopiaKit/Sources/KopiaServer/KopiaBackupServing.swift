@@ -23,11 +23,13 @@ package struct KopiaBackupSession: Sendable {
 
     package static func start(
         executable: URL, repositoryID: UUID, homeDirectory: URL, temporaryDirectory: URL,
-        user: String, backupPassword: String, lowPriority: Bool = false, s3: KopiaS3Authentication? = nil
+        user: String, backupPassword: String, lowPriority: Bool = false, s3: KopiaS3Authentication? = nil,
+        webDAV: Data? = nil
     ) async throws -> Self {
         let configuration = try KopiaServerConfiguration(
             executable: executable, repositoryID: repositoryID, homeDirectory: homeDirectory,
-            temporaryDirectory: temporaryDirectory, user: user, backupPassword: backupPassword, s3: s3)
+            temporaryDirectory: temporaryDirectory, user: user, backupPassword: backupPassword,
+            configuration: webDAV.map { .webDAV($0) } ?? .file, s3: s3)
         let process = KopiaServerProcess()
         let handshake = try await process.start(configuration: configuration, lowPriority: lowPriority)
         let client = KopiaServerClient(handshake: handshake)

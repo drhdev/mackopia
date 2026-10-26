@@ -38,7 +38,9 @@ struct S3ServiceIntegrationTests {
             try await service.run(plan.id)
             try await waitForRuntime(timeout: .seconds(90)) {
                 let state = try await service.state()
-                return !state.runs.isEmpty && state.activePlanID == nil
+                // History is published before the active-plan observation can catch up during admission.
+                // Wait for a terminal run as well as released execution, retaining every success assertion below.
+                return state.runs.first.map { $0.outcome != .running } == true && state.activePlanID == nil
             }
             let state = try await service.state()
             #expect(state.runs.first?.outcome == .succeeded)

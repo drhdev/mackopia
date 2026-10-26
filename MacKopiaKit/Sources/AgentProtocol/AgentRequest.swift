@@ -3,7 +3,7 @@ import Foundation
 
 /// Secrets are accepted only in setup commands, never returned in responses or events.
 public struct AgentRequest: Codable, Sendable, CustomReflectable {
-    public static let currentVersion: UInt32 = 5
+    public static let currentVersion: UInt32 = 6
     public let version: UInt32
     public let id: UUID
     public let command: Command
@@ -18,6 +18,8 @@ public struct AgentRequest: Codable, Sendable, CustomReflectable {
         case clearRestorePreview
         case editSnapshot(repositoryID: UUID, snapshotID: String, description: String, pinned: Bool)
         case setup(name: String, destination: BackupSource, source: BackupSource, password: String, create: Bool)
+        case setupWebDAV(name: String, source: BackupSource, setup: WebDAVSetup, create: Bool)
+        case updateWebDAVCredentials(repositoryID: UUID, setup: WebDAVSetup)
         case updateS3Credentials(repositoryID: UUID, setup: S3Setup)
         case setupS3(name: String, source: BackupSource, setup: S3Setup, create: Bool)
         case createPlan(name: String, repositoryID: UUID, source: BackupSource)
@@ -44,6 +46,12 @@ public struct AgentRequest: Codable, Sendable, CustomReflectable {
             throw LocalServiceIssue.invalidRequest
         }
         switch command {
+        case .updateWebDAVCredentials(_, let setup): try setup.validate()
+        case .setupWebDAV(let name, let source, let setup, let create):
+            try setup.validate()
+            guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, name.utf8.count <= 1024,
+                !name.utf8.contains(0), source.bookmark == nil, !create || setup.backupPassword.count >= 12
+            else { throw LocalServiceIssue.invalidRequest }
         case .updateS3Credentials(_, let setup): try setup.validate()
         case .setupS3(let name, let source, let setup, let create):
             try setup.validate()

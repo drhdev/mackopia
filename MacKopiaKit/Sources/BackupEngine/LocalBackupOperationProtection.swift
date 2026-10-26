@@ -20,7 +20,7 @@ package struct LocalBackupOperationProtection: BackupOperationProtecting {
         }
         // Remote browsing has neither a destination volume nor an original source to monitor.
         // Restore writes still pass their output volume above; all operations retain the repo reservation.
-        if directories.isEmpty, case .s3 = repository.kind {
+        if directories.isEmpty, repository.kind.isIntegratedBackend {
             let result = try await operation()
             try Task.checkCancellation()
             return result

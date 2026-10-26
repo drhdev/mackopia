@@ -13,7 +13,22 @@ final class LocalSetupStore {
     var password = ""
     var confirmation = ""
     var create = true
-    var useS3 = false
+    enum Backend: Hashable { case filesystem, s3, webDAV }
+    var backend: Backend = .filesystem
+    var webDAVURL = "https://"
+    var webDAVUsername = ""
+    var webDAVPassword = ""
+    var webDAVSetup: WebDAVSetup? {
+        guard let url = URL(string: webDAVURL) else { return nil }
+        return try? WebDAVSetup(url: url, username: webDAVUsername, password: webDAVPassword, backupPassword: password)
+    }
+    var destinationValid: Bool {
+        switch backend {
+        case .filesystem: !destination.isEmpty
+        case .s3: s3Setup != nil
+        case .webDAV: webDAVSetup != nil
+        }
+    }
     var endpoint = "https://s3.amazonaws.com"
     var bucket = ""
     var prefix = ""
@@ -37,15 +52,19 @@ final class LocalSetupStore {
             case .s3(let endpoint, let bucket, let prefix, let region, _) = repository.kind
         {
             self.name = repository.name; self.endpoint = endpoint; self.bucket = bucket; self.prefix = prefix
-            self.region = region ?? "us-east-1"; self.useS3 = true; self.create = false
+            self.region = region ?? "us-east-1"; self.backend = .s3; self.create = false
+        }
+        if let repository = credentialRepository, case .webdav(let url) = repository.kind {
+            self.name = repository.name; self.webDAVURL = url.absoluteString
+            self.backend = .webDAV; self.create = false
         }
     }
     var valid: Bool {
-        if credentialRepository != nil { return s3Setup != nil }
+        if credentialRepository != nil { return destinationValid }
         return !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && name.utf8.count <= 1024
             && !source.isEmpty
             && (repositoryID != nil
-                || ((useS3 ? s3Setup != nil : !destination.isEmpty) && !password.isEmpty
+                || (destinationValid && !password.isEmpty
                     && password.utf8.count <= 65_536
                     && (!create || (password.count >= 12 && password == confirmation))))
     }
@@ -55,10 +74,17 @@ final class LocalSetupStore {
         password = UUID().uuidString + UUID().uuidString; confirmation = password; revealPassword = true
     }
     func clear() {
-        password = ""; confirmation = ""; revealPassword = false; accessKey = ""; secretKey = ""; sessionToken = ""
+        webDAVPassword = ""; webDAVUsername = ""; password = ""; confirmation = ""; revealPassword = false;
+        accessKey = ""; secretKey = ""; sessionToken = ""
     }
     func submit(completed: @escaping () -> Void) {
         guard valid else { return }
+        if let repository = credentialRepository, backend == .webDAV, let setup = webDAVSetup {
+            connection.send(.updateWebDAVCredentials(repositoryID: repository.id, setup: setup)) {
+                self.clear(); completed()
+            }
+            return
+        }
         if let repository = credentialRepository, let setup = s3Setup {
             connection.send(.updateS3Credentials(repositoryID: repository.id, setup: setup)) {
                 self.clear(); completed()
@@ -70,7 +96,17 @@ final class LocalSetupStore {
             connection.send(.createPlan(name: name, repositoryID: repositoryID, source: source), completed: completed)
             return
         }
-        if useS3, let setup = s3Setup {
+        if backend == .webDAV, let setup = webDAVSetup {
+            connection.send(.setupWebDAV(name: name, source: source, setup: setup, create: create)) {
+                self.connection.recoveryKitRepositoryID =
+                    self.connection.state?.configuration?.repositories.first {
+                        $0.kind == setup.kind
+                    }?.id
+                self.clear(); completed()
+            }
+            return
+        }
+        if backend == .s3, let setup = s3Setup {
             connection.send(.setupS3(name: name, source: source, setup: setup, create: create)) {
                 self.connection.recoveryKitRepositoryID =
                     self.connection.state?.configuration?.repositories.first {

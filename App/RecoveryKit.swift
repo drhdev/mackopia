@@ -10,6 +10,7 @@ enum RecoveryKit {
         else { return }
         let path: String
         let s3: Bool
+        var webDAV = false
         var s3Configuration: String?
         switch repository.kind {
         case .filesystem(let value, _): path = value; s3 = false
@@ -36,10 +37,11 @@ enum RecoveryKit {
                 let text = String(data: data, encoding: .utf8)
             else { return }
             s3Configuration = text
+        case .webdav(let url): path = url.absoluteString; s3 = false; webDAV = true
         default: return
         }
         let content = RecoveryKitPage(
-            name: repository.name, path: path, s3: s3, s3Configuration: s3Configuration,
+            name: repository.name, path: path, s3: s3, webDAV: webDAV, s3Configuration: s3Configuration,
             identity: repository.identity, date: .now)
         let view = NSHostingView(rootView: content)
         view.frame = NSRect(x: 0, y: 0, width: 560, height: 720)
@@ -56,6 +58,7 @@ private struct RecoveryKitPage: View {
     let name: String
     let path: String
     var s3 = false
+    var webDAV = false
     var s3Configuration: String?
     let identity: SnapshotIdentity
     let date: Date
@@ -65,7 +68,10 @@ private struct RecoveryKitPage: View {
             Text(date, format: .dateTime.year().month().day())
             LabeledContent("Speicherziel", value: name)
             LabeledContent(
-                "Typ", value: s3 ? String(localized: "S3-kompatibel") : String(localized: "Lokales Dateisystem"))
+                "Typ",
+                value: webDAV
+                    ? String(localized: "WebDAV")
+                    : (s3 ? String(localized: "S3-kompatibel") : String(localized: "Lokales Dateisystem")))
             Text(path).textSelection(.enabled)
             LabeledContent("Benutzer", value: identity.overrideUser)
             LabeledContent("Rechner", value: identity.overrideHost)
@@ -77,7 +83,14 @@ private struct RecoveryKitPage: View {
             Text(
                 "1. Installiere Kopia 0.23.1 von kopia.io und schließe das Speicherziel an. Verwende eine eigene Konfigurationsdatei, einen eigenen Cache und Logordner."
             )
-            if s3 {
+            if webDAV {
+                Text(
+                    "2. Öffne das vorhandene WebDAV-Ziel mit Kopia 0.23.1 über eine nur im Speicher erzeugte Laufzeitkonfiguration. URL steht oben; WebDAV-Benutzername, WebDAV-Passwort und Backup-Passwort benötigst du separat. Verwende HTTPS. repository connect speichert WebDAV-Zugangsdaten in einer Datei und gehört nicht zu diesem sicheren Wiederherstellungsweg."
+                )
+                Text(
+                    "Übergib die Laufzeitkonfiguration je Kopia-Aufruf über eine neue geerbte anonyme Pipe und --config-file. Verwende einen geschützten Symlink-Pfad und eine gemeinsame nicht geheime Wartungssperre wie in docs/SPIKE-D-SECRETS.md des MacKopia-Quellcodes beschrieben. Halte stdin für den Server-Shutdown frei. Speichere Zugangsdaten niemals in einer regulären Konfigurationsdatei."
+                )
+            } else if s3 {
                 Text(
                     "2. Speichere diese Verbindungsdatei mit Zugriffsrechten nur für deinen Benutzer (0600) und einem eigenen absoluten Cache-Pfad. Stelle AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, gegebenenfalls AWS_SESSION_TOKEN und KOPIA_PASSWORD nur in der Prozessumgebung bereit. Verwende repository status zum Prüfen; repository connect würde Zugangsdaten in der Datei speichern."
                 )

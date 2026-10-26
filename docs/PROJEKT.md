@@ -298,6 +298,16 @@ bestätigt keinen Zugang. Ersatz-Credentials erst nach erfolgreicher Probe speic
 HTTP wird nur für literales `127.0.0.1` zum lokalen Test zugelassen, keine allgemeine TLS-Ausnahme.
 Object-Lock-Einrichtung bleibt bis zu einem eigenen Backend-Nachweis außerhalb dieses Assistenten.
 
+WebDAV-Produktionspfad (Phase 4): `repository create webdav --create-only` erhält WebDAV-Zugänge nur über
+Environment; es wird keine lokale Verbindung geschrieben. Connect besteht aus frischer Pipe-Konfiguration,
+Status-/Format-Blob-Probe und Owner-Prüfung, ohne `repository connect`. Backup-Passwort, WebDAV-Benutzername
+und -Passwort liegen als begrenztes Envelope gemeinsam unter `Repository.secretRef` im Schlüsselbund.
+Die vollständige Laufzeitkonfiguration wird pro Operation aus validiertem Ziel und frisch gelesenem Envelope
+nur im Speicher aufgebaut; jeder CLI-/Server-Start bekommt eine eigene Pipe über den bestehenden
+Symlink-/Lock-Transport. Balanced/zstd und Owner werden nach Create ausdrücklich initialisiert; fremde Owner
+bleiben unverändert. Credential-Ersatz erst nach Status und frischem Format-Blob-Read speichern.
+HTTPS ist verbindlich; HTTP ausschließlich für literales `127.0.0.1` im lokalen Fixture.
+
 ### 6.3 Typisierte CLI-Kommandos (`KopiaCommand`)
 
 Jedes Kommando ist ein Wert-Typ, der `arguments`, `environment`, `timeout` und den Ergebnis-Typ kennt:
@@ -1687,7 +1697,8 @@ ein integrierter Restore-UI-Durchgang, Package/Xcode/Format am Ende.
 **Ergebnis:** S3, WebDAV und SFTP funktionieren vom Assistenten bis Backup und Restore.
 
 S3 ist über denselben Dienst/Runtime-Pfad integriert; temporärer Lifecycle und offene Live-Nachweise in STATUS.md.
-Nächster Backend-Block: WebDAV über den bereits freigegebenen Pipe-Transport, danach SFTP.
+WebDAV ist über den freigegebenen Pipe-Transport in denselben Dienst-/Runtime-Pfad integriert und automatisiert geprüft;
+Nächster Backend-Block danach: SFTP.
 
 Pro Backend ein vollständiger größerer Arbeitsblock: Keychain/Transport, Erzeugen/Verbinden/Testen,
 Auth-/Host-Key-UX, Runtime, Offline-/Fehlerbehandlung, Wiederverbindung und Restore.
@@ -1881,6 +1892,8 @@ Neuere ausdrücklich ersetzende Entscheidungen haben Vorrang; alte Phasen-/Platt
 | 2026-10-25 | Begrenzter lazy Restore-Browser, Quick Look und Recovery-Kit ohne Passwort | §8.4/§11.2: explizite Suchgrenzen; Cache-Sitzung privat und beim Schließen bereinigt, Crashreste als offene Grenze dokumentiert. Kit über nativen Druck-/PDF-Dialog ohne Secret-Rückgabe. Manuelle Druck-/DE-EN-/A11y-Abnahme separat. |
 
 | 2026-10-25 | Phase 4/S3: secretfreier Create-only-Bootstrap, Keychain-Envelope und XPC Version 5 | §6.2/§8/§9: eigene atomare Connection ohne AWS-Felder; Credentials nur an Kind-Environment, frischer Format-Blob statt Cache als Auth-Evidenz, geprüfter Credential-Ersatz. Bestehende Runtime/Restore/Verify/Wartung gemeinsam; HTTPS und ausschließlich lokales 127.0.0.1-HTTP-Fixture. Object Lock und reale Provider-Abnahme separat. |
+
+| 2026-10-25 | Phase 4/WebDAV: Keychain-Envelope und frische native Pipe bis Backup/Restore, XPC Version 6 | §6.2/§8/§9: Create-only ohne Connection, Connect ohne Konfigurationsmutation; explizite Cache-Kapazitäten, Balanced/zstd, Owner-Erhalt, frischer Format-Read für Zugang/Credential-Ersatz. HTTPS; HTTP nur literales 127.0.0.1 zum temporären Test. Keine neuen Abhängigkeiten/Entitlements; reale Anbieter-/UI-/Keychain-Abnahme separat. |
 
 ---
 

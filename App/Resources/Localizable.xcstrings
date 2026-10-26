@@ -2256,6 +2256,118 @@
           }
         }
       }
+    },
+    "WebDAV": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "WebDAV"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "WebDAV"
+          }
+        }
+      }
+    },
+    "WebDAV-URL": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "WebDAV-URL"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "WebDAV URL"
+          }
+        }
+      }
+    },
+    "WebDAV-Benutzername": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "WebDAV-Benutzername"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "WebDAV username"
+          }
+        }
+      }
+    },
+    "WebDAV-Passwort": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "WebDAV-Passwort"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "WebDAV password"
+          }
+        }
+      }
+    },
+    "Verwende einen eigenen WebDAV-Ordner mit HTTPS und Lese-, Schreib-, Listen- und Löschrechten. Die Einrichtung prüft den Zugang; vorhandene Backups werden beim Anlegen nicht ersetzt.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verwende einen eigenen WebDAV-Ordner mit HTTPS und Lese-, Schreib-, Listen- und Löschrechten. Die Einrichtung prüft den Zugang; vorhandene Backups werden beim Anlegen nicht ersetzt."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Use a dedicated WebDAV folder with HTTPS and read, write, list, and delete permissions. Setup checks access; creating a destination does not replace existing backups."
+          }
+        }
+      }
+    },
+    "2. Öffne das vorhandene WebDAV-Ziel mit Kopia 0.23.1 über eine nur im Speicher erzeugte Laufzeitkonfiguration. URL steht oben; WebDAV-Benutzername, WebDAV-Passwort und Backup-Passwort benötigst du separat. Verwende HTTPS. repository connect speichert WebDAV-Zugangsdaten in einer Datei und gehört nicht zu diesem sicheren Wiederherstellungsweg.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "2. Öffne das vorhandene WebDAV-Ziel mit Kopia 0.23.1 über eine nur im Speicher erzeugte Laufzeitkonfiguration. URL steht oben; WebDAV-Benutzername, WebDAV-Passwort und Backup-Passwort benötigst du separat. Verwende HTTPS. repository connect speichert WebDAV-Zugangsdaten in einer Datei und gehört nicht zu diesem sicheren Wiederherstellungsweg."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "2. Open the existing WebDAV destination with Kopia 0.23.1 using a runtime configuration created only in memory. The URL is above; obtain the WebDAV username, WebDAV password, and backup password separately. Use HTTPS. repository connect stores WebDAV credentials in a file and is outside this secure recovery procedure."
+          }
+        }
+      }
+    },
+    "Übergib die Laufzeitkonfiguration je Kopia-Aufruf über eine neue geerbte anonyme Pipe und --config-file. Verwende einen geschützten Symlink-Pfad und eine gemeinsame nicht geheime Wartungssperre wie in docs/SPIKE-D-SECRETS.md des MacKopia-Quellcodes beschrieben. Halte stdin für den Server-Shutdown frei. Speichere Zugangsdaten niemals in einer regulären Konfigurationsdatei.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Übergib die Laufzeitkonfiguration je Kopia-Aufruf über eine neue geerbte anonyme Pipe und --config-file. Verwende einen geschützten Symlink-Pfad und eine gemeinsame nicht geheime Wartungssperre wie in docs/SPIKE-D-SECRETS.md des MacKopia-Quellcodes beschrieben. Halte stdin für den Server-Shutdown frei. Speichere Zugangsdaten niemals in einer regulären Konfigurationsdatei."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "For each Kopia invocation, pass the runtime configuration through a fresh inherited anonymous pipe and --config-file. Use a protected symlink path and a shared nonsecret maintenance lock as described in docs/SPIKE-D-SECRETS.md in the MacKopia source. Keep stdin available for server shutdown. Never save credentials in a regular configuration file."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

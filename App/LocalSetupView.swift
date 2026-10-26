@@ -24,12 +24,21 @@ struct LocalSetupView: View {
                                 Text("Neu anlegen").tag(true)
                                 Text("Vorhandenes verbinden").tag(false)
                             }
-                            Picker("Typ", selection: $store.useS3) {
-                                Text("Lokales Dateisystem").tag(false)
-                                Text("S3-kompatibel").tag(true)
+                            Picker("Typ", selection: $store.backend) {
+                                Text("Lokales Dateisystem").tag(LocalSetupStore.Backend.filesystem)
+                                Text("S3-kompatibel").tag(LocalSetupStore.Backend.s3)
+                                Text("WebDAV").tag(LocalSetupStore.Backend.webDAV)
                             }
                         }
-                        if store.useS3 {
+                        if store.backend == .webDAV {
+                            TextField("WebDAV-URL", text: $store.webDAVURL).disabled(store.credentialRepository != nil)
+                            SecureField("WebDAV-Benutzername", text: $store.webDAVUsername)
+                            SecureField("WebDAV-Passwort", text: $store.webDAVPassword)
+                            Text(
+                                "Verwende einen eigenen WebDAV-Ordner mit HTTPS und Lese-, Schreib-, Listen- und Löschrechten. Die Einrichtung prüft den Zugang; vorhandene Backups werden beim Anlegen nicht ersetzt."
+                            )
+                            .foregroundStyle(.secondary)
+                        } else if store.backend == .s3 {
                             TextField("HTTPS-Endpunkt", text: $store.endpoint).disabled(
                                 store.credentialRepository != nil)
                             TextField("Bucket", text: $store.bucket).disabled(store.credentialRepository != nil)
@@ -109,9 +118,15 @@ struct LocalSetupView: View {
 #Preview("S3") {
     let store: LocalSetupStore = {
         let store = LocalSetupStore(connection: AgentConnection(preview: true))
-        store.useS3 = true
+        store.backend = .s3
         store.bucket = "example-backups"
         return store
     }()
+    return LocalSetupView().environment(store)
+}
+
+#Preview("WebDAV") {
+    let store = LocalSetupStore(connection: AgentConnection(preview: true))
+    store.backend = .webDAV
     return LocalSetupView().environment(store)
 }

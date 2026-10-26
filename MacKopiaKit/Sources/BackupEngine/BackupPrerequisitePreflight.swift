@@ -33,7 +33,7 @@ package struct BackupPrerequisitePreflight: Sendable {
         // Never return/cache the value in a preflight report. The eventual operation resolves it afresh.
         let present: Bool
         do {
-            if case .s3 = repository.kind {
+            if repository.kind.kopiaStorageType == "s3" || repository.kind.kopiaStorageType == "webdav" {
                 _ = try await RepositoryCredentials.read(repository: repository, secrets: secrets)
                 present = true
             } else {
