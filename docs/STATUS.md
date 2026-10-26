@@ -7,7 +7,8 @@ Historische Evidenz bleibt im [Archiv](history/README.md).
 
 **Phase 4: S3, WebDAV und SFTP vom Assistenten bis Backup/Restore integriert.**
 SFTP-Schlüssel-Anmeldung mit bewusster Host-Key-Freigabe und RSA-PEM-Passphrase ist angeschlossen.
-Aktueller Branch `codex/p4-sftp`, Basis `codex/p4-webdav` ([Draft-PR #5](https://github.com/drhdevorg/mackopia/pull/5)).
+Aktueller Branch `codex/p4-sftp`, [Draft-PR #6](https://github.com/drhdevorg/mackopia/pull/6), gepusht.
+Basis `codex/p4-webdav` ([Draft-PR #5](https://github.com/drhdevorg/mackopia/pull/5)); Review/Merge ausstehend.
 Keine echte Remote-Infrastruktur angelegt; nur lokale Wegwerf-Fixtures und temporäre Speicherziele verwendet.
 
 ## In progress
@@ -46,7 +47,7 @@ Keine aktive Implementierungsclaim; SFTP-Block abgeschlossen, Review ausstehend.
 
 ## Prüfung dieses Codezustands
 
-- Finaler Produktionscode auf `codex/p4-sftp`, Xcode 27.1 (27A9275), Swift 6.4, arm64.
+- Finaler Produktionscode `9437d0d` auf `codex/p4-sftp`, Xcode 27.1 (27A9275), Swift 6.4, arm64.
 - Abschließende Package-Vollsuite: **553 Tests / 104 Suites bestanden**, einschließlich echter temporärer
   SFTP-/WebDAV-/S3-/lokaler Integration; keine Compilerwarnungen. Log `/tmp/mackopia-sftp-package-final.log`.
   WebDAV-Lifecycle 160,8 s; SFTP-Lifecycle 21,0 s. Unveränderter Abschlusslauf nach dem unten erfassten Fehler.
