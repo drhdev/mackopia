@@ -6,6 +6,7 @@ extension RepositoryKind {
         switch self {
         case .filesystem: "filesystem";
         case .s3: "s3";
+        case .webdav: "webdav";
         default: nil
         }
     }

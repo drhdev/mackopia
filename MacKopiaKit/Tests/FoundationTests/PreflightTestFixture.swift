@@ -41,7 +41,16 @@ struct PreflightTestFixture: Sendable {
             retention: RetentionPolicy(preset: .balanced),
             excludes: ExcludeRules(useMacOSDefaults: true, honorTimeMachineExclusions: false, ignoreCacheDirs: true),
             options: PlanOptions(lowPriority: true, ejectVolumeAfterBackup: false), health: HealthThresholds())
-        probe = PreflightTestProbe(volume: volume, scenario: scenario)
+        let secret =
+            remote
+            ? try SecretValue(
+                data: JSONEncoder().encode(
+                    WebDAVSetup(
+                        url: remoteURL,
+                        username: "fixture-user", password: "fixture-password",
+                        backupPassword: "fixture-backup-password")))
+            : try SecretValue(data: Data([1]))
+        probe = PreflightTestProbe(volume: volume, scenario: scenario, secret: secret)
         let reservation = try gate ?? RepositoryOperationGate()
         preflight = BackupPreflight(
             prerequisites: BackupPrerequisitePreflight(binary: probe, secrets: probe), gate: reservation,
@@ -56,11 +65,13 @@ actor PreflightTestProbe: KopiaBinaryVerifying, SecretStore, DirectoryInspecting
     FilesystemDestinationInspecting, RepositoryAccessChecking, SourceAccessChecking, RunEnvironmentSampling
 {
     let volume: VolumeIdentity
+    private let secret: SecretValue
     private var scenario: PreflightTestScenario
     private(set) var operations: [String] = []
     private(set) var accessSourceIDs: [UUID] = []
 
-    init(volume: VolumeIdentity, scenario: PreflightTestScenario) {
+    init(volume: VolumeIdentity, scenario: PreflightTestScenario, secret: SecretValue) {
+        self.secret = secret
         self.volume = volume
         self.scenario = scenario
     }
@@ -70,7 +81,7 @@ actor PreflightTestProbe: KopiaBinaryVerifying, SecretStore, DirectoryInspecting
     func verify() async throws { try record("binary") }
     func read(_ reference: SecretRef) async throws -> SecretValue? {
         try record("secret")
-        return scenario.missingPassword ? nil : try SecretValue(data: Data([1]))
+        return scenario.missingPassword ? nil : secret
     }
     func write(_ value: SecretValue, for reference: SecretRef) async throws { Issue.record("Unexpected secret write") }
     func delete(_ reference: SecretRef) async throws { Issue.record("Unexpected secret delete") }

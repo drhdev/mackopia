@@ -6,6 +6,8 @@ import Foundation
 package enum KopiaFilesystemBinding {
     package static func validate(repository: Repository, homeDirectory: URL) throws {
         try repository.kind.validate()
+        // WebDAV has no on-disk connection to trust: build it from validated metadata and Keychain per start.
+        if case .webdav = repository.kind { return }
         let paths = try KopiaRepositoryPaths(repositoryID: repository.id, homeDirectory: homeDirectory)
         let file = paths.configurationDirectory.appendingPathComponent("repository.config")
         guard file.resolvingSymlinksInPath().path == file.path else { throw KopiaProcessError.invalidRequest }

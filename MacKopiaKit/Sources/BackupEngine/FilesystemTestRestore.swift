@@ -32,7 +32,8 @@ package struct FilesystemTestRestore: SnapshotTestRestoring {
         repository: Repository, sources: [BackupSource], run: JobRun, lowPriority: Bool
     ) async throws -> Bool {
         try Task.checkCancellation()
-        let credentials = try await RepositoryCredentials.read(repository: repository, secrets: secrets)
+        let credentials = try await RepositoryCredentials.read(
+            repository: repository, secrets: secrets, homeDirectory: homeDirectory)
         let password = credentials.password
         try KopiaFilesystemBinding.validate(repository: repository, homeDirectory: homeDirectory)
         let paths = try KopiaRepositoryPaths(repositoryID: repository.id, homeDirectory: homeDirectory)
@@ -44,7 +45,7 @@ package struct FilesystemTestRestore: SnapshotTestRestoring {
             let samples = try await sampler.samples(
                 rootID: backup.rootID, executable: executable, paths: paths,
                 temporaryDirectory: temporaryDirectory, user: user, backupPassword: password, lowPriority: lowPriority,
-                s3: credentials.s3)
+                s3: credentials.s3, webDAV: credentials.webDAV)
             for sample in samples.shuffled() {
                 let result = try await RestoreSampleComparison.compare(
                     sourcePath: source.path, sample: sample, temporaryDirectory: temporaryDirectory
@@ -52,7 +53,8 @@ package struct FilesystemTestRestore: SnapshotTestRestoring {
                     try await sampler.restore(
                         sample, to: destination, executable: executable, paths: paths,
                         temporaryDirectory: temporaryDirectory, user: user,
-                        backupPassword: password, lowPriority: lowPriority, s3: credentials.s3)
+                        backupPassword: password, lowPriority: lowPriority, s3: credentials.s3,
+                        webDAV: credentials.webDAV)
                 }
                 if let result { return result }
             }

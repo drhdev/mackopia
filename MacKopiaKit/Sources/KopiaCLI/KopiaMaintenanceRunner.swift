@@ -9,12 +9,12 @@ package struct KopiaMaintenanceRunner: Sendable {
 
     package func runFull(
         executable: URL, paths: KopiaRepositoryPaths, temporaryDirectory: URL,
-        user: String, backupPassword: String, lowPriority: Bool, s3: KopiaS3Authentication? = nil
+        user: String, backupPassword: String, lowPriority: Bool, s3: KopiaS3Authentication? = nil, webDAV: Data? = nil
     ) async throws {
         try Task.checkCancellation()
         let context = KopiaExecutionContext(
             executable: executable, paths: paths, temporaryDirectory: temporaryDirectory,
-            user: user, configuration: .file, backupPassword: backupPassword, s3: s3)
+            user: user, configuration: webDAV.map { .webDAV($0) } ?? .file, backupPassword: backupPassword, s3: s3)
         // Kopia 0.23.1: retain the CLI's owner, locking and safety defaults; never force maintenance.
         var request = context.request(for: .maintenanceFull)
         request.lowPriority = lowPriority

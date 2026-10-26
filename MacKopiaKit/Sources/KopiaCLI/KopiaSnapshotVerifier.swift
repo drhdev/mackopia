@@ -10,11 +10,11 @@ package struct KopiaSnapshotVerifier: Sendable {
     package func verify(
         _ verification: KopiaSnapshotVerification, executable: URL, paths: KopiaRepositoryPaths,
         temporaryDirectory: URL, user: String, backupPassword: String, lowPriority: Bool,
-        s3: KopiaS3Authentication? = nil
+        s3: KopiaS3Authentication? = nil, webDAV: Data? = nil
     ) async throws {
         let context = KopiaExecutionContext(
             executable: executable, paths: paths, temporaryDirectory: temporaryDirectory,
-            user: user, configuration: .file, backupPassword: backupPassword, s3: s3)
+            user: user, configuration: webDAV.map { .webDAV($0) } ?? .file, backupPassword: backupPassword, s3: s3)
         // Bound argv size without truncating large plans. All batches must succeed.
         for offset in stride(from: 0, to: verification.snapshotIDs.count, by: 128) {
             try Task.checkCancellation()

@@ -134,6 +134,10 @@ struct FoundationView: View {
                             .lineLimit(1).truncationMode(.middle)
                         Button("Zugangsdaten aktualisieren…") { credentialRepository = repository }
                             .disabled(!connection.canConfigure)
+                    } else if case .webdav(let url) = repository.kind {
+                        Text(url.absoluteString).lineLimit(1).truncationMode(.middle).help(url.absoluteString)
+                        Button("Zugangsdaten aktualisieren…") { credentialRepository = repository }
+                            .disabled(!connection.canConfigure)
                     }
                 }
             }

@@ -30,7 +30,8 @@ package struct FilesystemSnapshotVerification: SnapshotVerifying {
     ) async throws {
         try Task.checkCancellation()
         let request = try KopiaSnapshotVerification(snapshotIDs: snapshotIDs, filesPercent: filesPercent)
-        let credentials = try await RepositoryCredentials.read(repository: repository, secrets: secrets)
+        let credentials = try await RepositoryCredentials.read(
+            repository: repository, secrets: secrets, homeDirectory: homeDirectory)
         let password = credentials.password
         try Task.checkCancellation()
         try KopiaFilesystemBinding.validate(repository: repository, homeDirectory: homeDirectory)
@@ -38,6 +39,6 @@ package struct FilesystemSnapshotVerification: SnapshotVerifying {
             request, executable: executable,
             paths: KopiaRepositoryPaths(repositoryID: repository.id, homeDirectory: homeDirectory),
             temporaryDirectory: temporaryDirectory, user: user, backupPassword: password, lowPriority: lowPriority,
-            s3: credentials.s3)
+            s3: credentials.s3, webDAV: credentials.webDAV)
     }
 }

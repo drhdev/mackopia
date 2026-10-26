@@ -204,3 +204,16 @@ Backup/Verify/Test-Restore, Neustart, Restore ohne Original, Connect mit erhalte
 falsche Schlüssel/Tokens/Passwörter, abgelehnten Credential-Ersatz, Offline-Zustand und Secret-Persistenz.
 Ein eigener Durchstich prüft Zugriffsschlüssel ohne Sitzungstoken. Aktuelle Ergebnisse/Live-Grenzen:
 [STATUS.md](STATUS.md). Echte Provider/IAM/Object-Lock und installierter Keychain-Betrieb bleiben separat.
+
+### WebDAV-Produktionsintegration (2026-10-25)
+
+Der native Pipe-Transport ist jetzt im Swift-Dienst und im XPC-6-Assistenten bis Backup/Restore verdrahtet.
+`WebDAVSetup` wird ausschließlich als Keychain-Envelope gespeichert; `KopiaWebDAVSetup` erstellt mit
+Create-only und öffnet/prüft vorhandene Ziele mit frischen Pipes, ohne reguläre Connection. Die gemeinsamen
+CLI-/Server-/Verify-/Test-Restore-/Wartungsadapter verwenden dieselbe Zuführung. Credential-Ersatz benötigt
+Status und frischen Format-Blob-Read, bevor er das bisherige Item ersetzen darf. HTTPS ist verbindlich;
+HTTP bleibt auf literales 127.0.0.1 im lokalen Fixture begrenzt.
+
+Der aktuelle Prüfstand von `WebDAVContractTests` und `WebDAVServiceIntegrationTests` sowie offene
+Provider-/Keychain-/UI-Nachweise stehen in [STATUS.md](STATUS.md). Frühere Hinweise auf fehlende native
+Server-/Dienstanbindung oben beschreiben den historischen Spike-Stand.

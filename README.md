@@ -30,21 +30,39 @@ A complete lifecycle is tested against disposable local SigV4-authenticated stor
 provider and its IAM policy, installed Keychain behavior, and manual UI/PDF review still require live evidence.
 Object Lock setup is not exposed yet. Plain HTTP is accepted only for the literal loopback test address 127.0.0.1.
 
+## WebDAV destinations
+
+The setup assistant can create or connect a WebDAV destination using an HTTPS URL, username,
+WebDAV password and separate backup password. Credentials stay in the agent's Keychain item.
+Each Kopia process receives its runtime configuration through a fresh anonymous pipe; no regular
+connection file contains WebDAV credentials. Credential replacements must pass an authenticated
+read before the agent saves them. Backup, verification, maintenance and restore use the shared runtime.
+
+Disposable loopback storage covers create/connect, backup/restore, rejected credentials and offline access.
+Real HTTPS providers, installed Keychain behavior and manual UI/PDF review still need live evidence.
+The recovery kit describes the pipe transport and includes no credentials.
+
 ## Development
 
 Use the latest stable Xcode and its bundled Swift/SwiftUI SDK (verified baseline: Xcode 27.1, Swift 6.4, macOS 27 SDK).
 Open `MacKopia.xcodeproj` and select the shared `MacKopia` scheme.
 The UI and menu bar connect local setup, plan editing, manual backup/stop, status and history to the background service.
-Automatic scheduling and the full restore browser are integrated; WebDAV and SFTP are the next backend integrations.
+Automatic scheduling, the full restore browser, S3 and WebDAV are integrated; SFTP is the next backend integration.
 Only macOS 27.x on arm64 is supported: no Intel/Rosetta or older-OS compatibility paths.
 The service is embedded under `Contents/Library/LoginItems`; the matching job plist is generated
 under `Contents/Library/LaunchAgents`. Service registration is explicit through the app and Settings UI.
 
 ```bash
+export MACKOPIA_TEST_PYTHON="$(python3 -c 'import sys; print(sys.executable)')"
+"$MACKOPIA_TEST_PYTHON" Scripts/check-test-python.py
 swift test --package-path MacKopiaKit
 swift format lint --recursive --strict App Agent MacKopiaKit Tests
 xcodebuild -scheme MacKopia -destination 'platform=macOS' build test
 ```
+
+Choose a Python interpreter with TLS 1.3 support before running these commands. The startup check
+must pass for both fixtures; Apple's bundled Python with LibreSSL cannot run the TLS fixture.
+The explicit variable also keeps SwiftPM's PATH changes from selecting a different interpreter.
 
 MacKopia targets distribution outside the App Store without an Apple Developer account,
 Developer ID certificate or mandatory notarization. App, Agent and embedded Kopia use local
@@ -59,7 +77,7 @@ and embeds it at `Contents/Helpers/kopia`. Apache license text and the upstream 
 are included in `Contents/Resources/Kopia`. Downloads are cached under ignored `Vendor/`.
 Run `./Scripts/fetch-kopia.sh` to prepare the helper independently. A cached archive with
 a mismatched hash fails the build; remove that archive explicitly before retrying.
-The `AgentProtocol` module contains version-2 bounded service requests, revision-based status updates,
+The `AgentProtocol` module contains version-6 bounded service requests, revision-based status updates,
 reconnect support and the `SMAppService` registration boundary. The older ping remains a contract fixture.
 Both client and listener pin the exact peer signing identifier and CodeDirectory hash from
 the validated installed bundle. The running executable must match its own disk signature;
