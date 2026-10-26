@@ -52,6 +52,10 @@ final class AgentAppDelegate: NSObject, NSApplicationDelegate {
                     case .setup(let name, let destination, let source, let password, let create):
                         try await service.setup(
                             name: name, destination: destination, source: source, password: password, create: create)
+                    case .setupSFTP(let name, let source, let setup, let create):
+                        try await service.setupSFTP(name: name, source: source, setup: setup, create: create)
+                    case .updateSFTPCredentials(let id, let setup):
+                        try await service.updateSFTPCredentials(repositoryID: id, setup: setup)
                     case .setupWebDAV(let name, let source, let setup, let create):
                         try await service.setupWebDAV(name: name, source: source, setup: setup, create: create)
                     case .updateWebDAVCredentials(let id, let setup):

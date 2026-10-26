@@ -1,65 +1,71 @@
 # Status & nächster Auftrag
 
-Stand: 2026-10-26. Neustarteinstieg: AGENTS.md, dieser Status, PROJEKT.md §14 und IMPLEMENTIERUNG.md.
+Stand: 2026-10-26. Einstieg: AGENTS.md, dieser Status, PROJEKT.md §14 und IMPLEMENTIERUNG.md.
 Historische Evidenz bleibt im [Archiv](history/README.md).
 
 ## Aktuelle Produktphase
 
-**Phase 4: WebDAV vom Assistenten bis Backup/Restore integriert und automatisiert geprüft.**
-Phase 1–3 und S3 bleiben integriert. Nächster Backend-Block nach WebDAV: SFTP.
-Branch `codex/p4-webdav`, Basis `codex/p4-s3`; [Draft-PR #5](https://github.com/drhdevorg/mackopia/pull/5).
-Beide Branches gepusht; keine echte Remote-Backup-Infrastruktur angelegt.
+**Phase 4: S3, WebDAV und SFTP vom Assistenten bis Backup/Restore integriert.**
+SFTP-Schlüssel-Anmeldung mit bewusster Host-Key-Freigabe und RSA-PEM-Passphrase ist angeschlossen.
+Aktueller Branch `codex/p4-sftp`, Basis `codex/p4-webdav` ([Draft-PR #5](https://github.com/drhdevorg/mackopia/pull/5)).
+Keine echte Remote-Infrastruktur angelegt; nur lokale Wegwerf-Fixtures und temporäre Speicherziele verwendet.
 
 ## In progress
 
-| Task | Agent / person | Branch | Modules / files touched | Started |
-|---|---|---|---|---|
-| — | — | — | — | — |
+Keine aktive Implementierungsclaim; SFTP-Block abgeschlossen, Review ausstehend.
 
 ## Verbindliche Entscheidungen
 
 - macOS 27.x, natives arm64; Xcode 27.1 (27A9275), Swift 6.4 / Sprachmodus 6, SDK 27.
-- Ad-hoc-Vertrieb mit Hardened Runtime; keine neuen Entitlements/Abhängigkeiten/Buildphasen.
-- Agent besitzt Runtime, Schlüsselbund und Kopia; App ausschließlich über authentifiziertes XPC, Version 6.
-- Remote-Zugänge als begrenztes Envelope im bestehenden Keychain-Item. S3 ohne Credential-Felder in Connection;
-  WebDAV ohne reguläre Connection, Runtime-JSON nur im Speicher über frische anonyme Pipe pro Prozess.
-- WebDAV: geschütztes 0500-Symlink-Verzeichnis, gemeinsame 0600-Wartungssperre; keine Config-Mutation.
-  Create-only, explizite Cache-Kapazitäten, Balanced/zstd und Owner; Connect erhält fremden Owner.
-- HTTPS; HTTP ausschließlich für literales 127.0.0.1 im lokalen Test. Kein Credential-Ersatz ohne Status und
-  frischen Format-Blob-Read. Kopias WebDAV-Auth-Retries können bis zum 60-Sekunden-Probelimit dauern.
+- Ad-hoc-Vertrieb/Hardened Runtime; unveränderte Entitlements/Dependencies/Buildphasen und Kopia 0.23.1.
+- Agent besitzt Runtime, Schlüsselbund und Kopia; App nur über authentifiziertes XPC, Version 7.
+- Remote-Zugänge als begrenztes Envelope im Keychain-Item. WebDAV/SFTP: Runtime-JSON nur im RAM,
+  frische anonyme Pipe pro Prozess, geschütztes Symlink-Verzeichnis, gemeinsame nicht geheime Wartungssperre.
+- SFTP: öffentlicher Host-Key aus vertrauenswürdigem Kanal, angezeigten Fingerprint ausdrücklich bestätigen.
+  Atomare 0600-known_hosts pro Ziel; vor jeder Operation an Envelope gebunden, Server-Wechsel blockiert.
+  Schlüssel-Anmeldung; RSA-PEM im RAM per System-OpenSSL entschlüsselt, normalisierter Schlüssel im Keychain,
+  Passphrase verworfen. SSH-Passwort und verschlüsselte OpenSSH-Schlüssel sind noch nicht freigegeben.
+- Create-only; Connect erhält fremden Wartungs-Owner. Credential-Ersatz erst nach Status/frischem Format-Blob.
 - Neue Pläne manuell bis zur Terminwahl; Mitteilungen aus; Eject nie mit Force.
 - Restore nur in neuen privaten UUID-Ordner (0700), Overwrite aus, keine Originalquelle nötig.
-- Recovery-Kit im nativen Druck-/PDF-Dialog ohne Secrets; Quick Look ≤50 MB, privater Sitzungscache.
-- Architektur/Entscheidungen: PROJEKT.md §6.2–§6.4, §8–§9, §11.2, §12 und §17.
+- Architektur und Entscheidungen: PROJEKT.md §6.2–§6.4, §8–§9, §11.2, §12 und §17.
 
 ## Implementiert und verdrahtet
 
-- Phase 1/2: gemeinsamer Dienst/Queue/Gate, UUID-/FDA-Schutz, Scheduling/Recovery/Pausen, Health und Nacharbeit.
-- Phase 3: Katalog/Browser/Suche, Restore-Task/Fortschritt/Abbruch, Finder/Quick Look/Kit; Reservierung bis Reaping.
-- S3: Create/Connect, authentifizierter Credential-Ersatz, gemeinsame CLI-/Server-/Restore-Adapter; Nachweise im Archiv.
-- `WebDAVSetup`/`RepositoryCredentials`: validiertes reflektionsgeschütztes Keychain-Envelope, frische Auflösung.
-- `KopiaWebDAVSetup`: Create-only mit Environment, Connect via Status/Format und Owner; vollständiges JSON nur im RAM.
-- Gemeinsame CLI-Adapter und `KopiaBackupSession` verwenden den bestehenden nativen Pipe-Transport pro Spawn;
-  stdin bleibt für Shutdown frei. `RemoteRepositoryAccess` prüft S3 und WebDAV, kein lokales Binding für WebDAV.
-- Dienst/XPC 6/Agent-Dispatch, Assistent mit HTTPS-URL und sicheren Zugangsfeldern, Credential-Sheet, DE/EN/Previews.
-  Recovery-Kit enthält URL und Hinweis zum sicheren Pipe-Verfahren ohne Credentials.
-- Keine Originalquellen-/Volume-Überwachung beim Remote-Browse; Ausgabe/Backup-Quellen bleiben UUID-geschützt.
+- Phase 1/2: gemeinsamer Dienst/Queue/Gate, UUID-/FDA-Schutz, Termine/Recovery/Pausen, Health/Nacharbeit.
+- Phase 3: Katalog/Browser/Suche, Restore-Fortschritt/Abbruch, Finder/Quick Look/Recovery-Kit ohne Secrets.
+- S3/WebDAV: Create/Connect, authentifizierter Credential-Ersatz und gemeinsamer CLI-/Server-/Restore-Pfad.
+- `SFTPSetup`/`KopiaSFTPTrust`: begrenzte Eingaben, SHA256-Pin, bestätigte öffentliche Trust-Datei.
+- `KopiaSFTPSetup`: Create über Schlüssel-Pipe, Connect über RAM-Konfiguration, Balanced/zstd/Owner;
+  RSA-PEM nur im RAM normalisiert. Kein `repository connect`, keine Secret-Datei/Config-Mutation.
+- `LocalServiceSFTPSetup`: Keychain-Envelope, gemeinsame Gates/Volume-Schutz, Probe vor Credential-Ersatz,
+  Duplikatschutz unabhängig von neuen Schlüsselreferenzen. `RepositoryCredentials` liest frisch für jede Operation.
+- `RemoteRepositoryAccess` und alle gemeinsamen CLI-/TLS-/Verify-/Wartungs-/Restore-Adapter verwenden SFTP.
+- XPC 7/Agent-Dispatch, Assistent mit mehrzeiliger Schlüsseleingabe/Fingerprint/Freigabe, Credential-Sheet,
+  Destination-Liste und Recovery-Kit DE/EN/Previews. Bei Host-/Port-/Key-Änderung Freigabe zurücksetzen.
 
 ## Prüfung dieses Codezustands
 
-- Finaler Swift-Codezustand auf `codex/p4-webdav`, Xcode 27.1 (27A9275), Swift 6.4, arm64.
-- Package: **550 Tests / 102 Suites bestanden**, einschließlich echtem WebDAV-Lifecycle (164,9 s),
-  S3-/lokalem Backup und Restore; keine Compilerwarnungen. Log `/tmp/mackopia-webdav-package-tls.log`.
-- Xcode `build test`: **erfolgreich, 4 Bundle-/Signaturtests bestanden**, keine Compilerwarnungen;
-  Xcode meldet eine IDE-interne Launch-Diagnostik. Log `/tmp/mackopia-webdav-xcode.log`.
-- Strikter Format-Lint und `git diff --check` sauber. Keine Änderung an Kopia-Pin, Entitlements oder Dependencies.
-- WebDAV: Grenzen/Envelope/Pipe, Create-Duplikat ohne Formatänderung, Backup/Verify/Test-Restore,
-  Neustart/Restore ohne Quelle, Credential-Erhalt, Connect mit fremdem Owner, Offline und Secret-Negativscan.
-- Timeout zählt als Ablehnung, Cancellation bleibt Abbruch; Regression vorhanden.
-- Testumgebung: `MACKOPIA_TEST_PYTHON` auf TLS-1.3-Interpreter setzen; Startup-Check und Anleitung in README.
-  Erster Lauf mit Apples LibreSSL-Python scheiterte an TLS-Fixtures und wurde beendet; korrigierter Vollauf bestand.
-- Frühere Evidenz: [S3](history/STATUS-Phase4-S3-Abschluss-2026-10-25.md),
-  [Phase 3](history/STATUS-Phase3-Abschluss-2026-10-25.md), [Phase 2](history/STATUS-Phase2-Abschluss-2026-10-25.md).
+- Finaler Produktionscode auf `codex/p4-sftp`, Xcode 27.1 (27A9275), Swift 6.4, arm64.
+- Abschließende Package-Vollsuite: **553 Tests / 104 Suites bestanden**, einschließlich echter temporärer
+  SFTP-/WebDAV-/S3-/lokaler Integration; keine Compilerwarnungen. Log `/tmp/mackopia-sftp-package-final.log`.
+  WebDAV-Lifecycle 160,8 s; SFTP-Lifecycle 21,0 s. Unveränderter Abschlusslauf nach dem unten erfassten Fehler.
+- Xcode `build test`: erfolgreich, **4 Bundle-/Signaturtests**, keine Compilerwarnungen;
+  bekannte IDE-interne Launch-Diagnostik. Log `/tmp/mackopia-sftp-xcode.log`.
+- SFTP gezielt: **4 Tests in 3 Suites bestanden**, echter Dienst-Lifecycle einschließlich PEM-Entschlüsselung,
+  falscher Passphrase/Schlüssel/Host-Key, Credential-Erhalt, Create-Duplikat, Backup/Verify/Test-Restore,
+  Neustart/Restore ohne Quelle, Connect/fremdem Owner, Offline und Secret-Negativscan.
+  Log `/tmp/mackopia-sftp-targeted-final.log`; zusätzliche Duplikat-/XPC-Regressionsfälle im erfolgreichen Vollauf.
+- **11 Python-Tests bestanden**; strikter Swift-Format-Lint und `git diff --check` sauber.
+- Erster Vollauf: 553 Tests/104 Suites, genau ein Fehler bei automatischer WebDAV-Verifikation;
+  alle SFTP-Fälle bestanden. Log `/tmp/mackopia-sftp-package.log`. Unveränderter isolierter WebDAV-Lifecycle
+  danach erfolgreich (158,4 s), `/tmp/mackopia-sftp-webdav-diagnosis.log`. Zusätzliche 12×10-Prozent-/1×100-Prozent-
+  Prüfungen auf frischem Temp-Ziel bestanden, numerischer Bericht `/tmp/mackopia-verify-sample-report.json`.
+  Ursache bisher nicht reproduziert; keine Assertions abgeschwächt, keine automatischen Wiederholungen eingebaut.
+- Frühere Fixture-Diagnose: zu langer Unix-Socket-Pfad; eigener kurzer privater ssh-agent-Temp-Ordner behebt das.
+- TLS-Fixtures benötigen `MACKOPIA_TEST_PYTHON` auf vorhandenen TLS-1.3-Interpreter (README).
+- Frühere Nachweise: [SFTP-Spike/WebDAV-Basis](history/STATUS-Phase4-SFTP-Spike-2026-10-26.md),
+  [S3](history/STATUS-Phase4-S3-Abschluss-2026-10-25.md), [Phase 3](history/STATUS-Phase3-Abschluss-2026-10-25.md).
 
 ## Offene Live-Nachweise und Grenzen – kein globaler Entwicklungsstopp
 
@@ -78,15 +84,18 @@ Beide Branches gepusht; keine echte Remote-Backup-Infrastruktur angelegt.
 | Harte Dienstbeendigung | Quick-Look-Cache | Private Cache-Reste möglich; Startup-Reinigung ergänzen, regulärer Close/Shutdown bereinigt |
 | Große Kataloge/Verzeichnisse | Restore-Browser | >128 Quellen/1.000 Snapshots/8 MiB bzw. >2.000 Einträge blockieren; Pagination vor größerer Freigabe |
 | Gatekeeper/Updates, Checkpoint 45 statt 15 Minuten | Release | Phase 6: Installationsartefakt prüfen; Checkpoint-Produktentscheidung treffen |
+| Reales SFTP/SSH/Host-Key | Provider-Kompatibilität | Nutzer stellt entbehrlichen Testordner und öffentlichen Host-Key über vertrauenswürdigen Kanal bereit; Agent prüft Create/Connect/Backup/Restore/Schlüsselwechsel |
+| Einmalige WebDAV-Verifikationsablehnung im Vollauf | Prüfevidenz unter paralleler Last | Bei erneutem Auftreten sanitisierte Prozess-/Prüfzähler und Fixture-Zustand erfassen; erster Fehler und isolierte erfolgreiche Diagnose oben |
 
 ## Nächster vollständiger Coding-Auftrag
 
-**Phase 4: SFTP als vollständigen Backend-Block anschließen.**
+**Phase 5: integrierte macOS-Bedienung und Betriebsqualität prüfen und vervollständigen.**
 
-SFTP: bewusste Host-Key-Freigabe, sichere Schlüssel-/Passphrase-Zuführung zuerst gegen gepinntes Kopia belegen;
-keine Secret-Datei-Ausnahme, kein ungeprüftes Passwort-Environment, keine neuen Abhängigkeiten ohne Freigabe.
-Danach Keychain, Create/Connect/Testen, Runtime, XPC, Assistent, Offline/Auth/Reconnect und Restore verbinden.
-Einstieg: PROJEKT.md §6.2–§6.4, §8–§9, §14 Phase 4, SPIKE-D-SECRETS.md und WebDAV/S3-Komposition.
-Fertig: SFTP über denselben Dienst einrichten/sichern/wiederherstellen, Host-Key-Wechsel blockiert;
-echter temporärer Lifecycle/Secret-Negativscan, Package/Xcode/Format/Doku.
+Einstieg: PROJEKT.md §4–§5, §11–§14 Phase 5, AGENTS.md §7 und IMPLEMENTIERUNG.md.
+Fenster/Menüleiste/Shortcuts/Fehleraktionen und Remote-Assistenten im zusammenhängenden Temp-Workflow prüfen;
+Startup-Cleanup für verwaiste private Quick-Look-Caches ergänzen. DE/EN, Light/Dark/Kontrast, minimales Fenster,
+Tastatur und VoiceOver samt Screenshots erfassen; mit Instruments Idle-CPU/Speicher/I/O/Fortschrittsfrequenz messen.
+Befunde mit Regressionstests beheben, keine spekulativen Frameworks/Entitlements. Nicht mögliche manuelle
+Systemaktionen konkret im Ledger führen. Fertig: belegter integrierter Audit, behobene Codebefunde,
+relevante Package-/Xcode-/Format-Prüfung und kompakte Übergabe. Reale Provider-/Hardware-Checks bleiben separat.
 Name/Bundle-Präfix MacKopia / com.example.MacKopia; Lizenzmodell offen.

@@ -41,7 +41,7 @@ actor KopiaProcess: KopiaProcessRunning {
             "HOME", "USER", "LANG", "LC_ALL", "TMPDIR", "KOPIA_CHECK_FOR_UPDATES",
             "KOPIA_PASSWORD", "KOPIA_LOG_DIR", "KOPIA_CACHE_DIRECTORY",
             "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN", "AWS_REGION", "AWS_DEFAULT_REGION",
-            "KOPIA_WEBDAV_USERNAME", "KOPIA_WEBDAV_PASSWORD",
+            "KOPIA_WEBDAV_USERNAME", "KOPIA_WEBDAV_PASSWORD", "MACKOPIA_KEY_PASSPHRASE",
         ])
         guard input.executable.isFileURL, !input.executable.path.utf8.contains(0),
             input.arguments.count <= 256, input.arguments.allSatisfy({ !$0.utf8.contains(0) }),

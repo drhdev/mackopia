@@ -40,7 +40,13 @@ struct RepositoryCredentials: Sendable, CustomReflectable {
                 webDAV: KopiaWebDAVSetup.configuration(
                     repository: repository,
                     home: homeDirectory, setup: setup))
-        default: throw BackupOperationError.operationFailed
+        case .sftp:
+            let setup = try JSONDecoder().decode(SFTPSetup.self, from: value.data)
+            try setup.validate()
+            guard setup.kind == repository.kind else { throw BackupOperationError.operationFailed }
+            return try Self(
+                password: setup.backupPassword, s3: nil,
+                webDAV: KopiaSFTPSetup.configuration(repository: repository, home: homeDirectory, setup: setup))
         }
     }
 }

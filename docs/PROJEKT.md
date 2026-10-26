@@ -269,12 +269,14 @@ Pflichtanforderungen:
    Englische Locale erzwingen, weil Fehler-Mapping auf englischen Meldungen basiert.
 3. **Passwörter nie in argv** (für alle Nutzer per `ps` sichtbar). Repository-Passwort über `KOPIA_PASSWORD` in der Umgebung des
    Kindprozesses. S3-Secrets über AWS-Umgebungsvariablen bei vollständig fehlenden Credential-Feldern in der
-   Konfiguration. WebDAV: Credentials aus dem Schlüsselbund ausschließlich in eine im Speicher erzeugte
+   Konfiguration. WebDAV/SFTP: Credentials aus dem Schlüsselbund ausschließlich in eine im Speicher erzeugte
    JSON-Laufzeitkonfiguration einsetzen und über eine explizit vererbte anonyme Pipe übergeben. Frische Pipe pro
    Prozess, geschütztes 0500-Symlink-Verzeichnis und gemeinsame nicht geheime 0600-Wartungssperre; Deskriptoren
    und Laufzeitverzeichnis aufräumen. stdin bleibt für Shutdown frei. Keine secret-haltige reguläre Config-/Temp-Datei.
    Kopia-Konfigurations-Schreiboperationen sind bei diesem Transport ausgeschlossen; Änderungen verwaltet der Agent
-   und übernimmt sie beim nächsten Prozessstart. SFTP-Zuführung noch offen (`KOPIA_SFTP_PASSWORD` nicht unterstützt).
+   und übernimmt sie beim nächsten Prozessstart. SFTP verwendet denselben freigegebenen Pipe-Transport (2026-10-26);
+   `KOPIA_SFTP_PASSWORD` ist nicht unterstützt. Private Schlüssel gegebenenfalls nur im RAM entschlüsseln;
+   Host-Key-Vertrauen muss ausdrücklich bestätigt werden.
 4. **stdout und stderr gleichzeitig lesen** (zwei Tasks, `FileHandle.bytes` bzw. `AsyncSequence`). Sonst Deadlock bei vollem
    64-KB-Pipe-Puffer. stdout für JSON, stderr zeilenweise für Logs und den Server-Handshake.
 5. **Immer `--config-file`, `--log-dir`, `--no-progress`** (wo unterstützt). Kopia 0.23.1 akzeptiert
@@ -307,6 +309,22 @@ nur im Speicher aufgebaut; jeder CLI-/Server-Start bekommt eine eigene Pipe übe
 Symlink-/Lock-Transport. Balanced/zstd und Owner werden nach Create ausdrücklich initialisiert; fremde Owner
 bleiben unverändert. Credential-Ersatz erst nach Status und frischem Format-Blob-Read speichern.
 HTTPS ist verbindlich; HTTP ausschließlich für literales `127.0.0.1` im lokalen Fixture.
+
+SFTP-Produktionspfad (Phase 4): Schlüssel-Anmeldung über Kopias internen SSH-Client (`externalSSH=false`).
+Der Assistent übernimmt den öffentlichen Host-Key aus einem vertrauenswürdigen Kanal, zeigt den daraus
+berechneten SHA256-Fingerprint und verlangt die ausdrückliche Freigabe. Ein atomarer öffentlicher
+0600-`known_hosts`-Eintrag pro Speicherziel wird bei jeder Operation gegen das Keychain-Envelope geprüft;
+abweichende Server-Schlüssel werden von SSH blockiert. Kein TOFU und keine automatische Neufreigabe.
+`repository create sftp --create-only` liest den privaten Schlüssel aus einer frischen geerbten Pipe;
+Connect besteht aus Status/Format-Blob/Owner-Prüfung über die RAM-Konfiguration, ohne Config-Schreibkommando.
+Das begrenzte Envelope enthält Backup-Passwort, privaten Schlüssel und bestätigten öffentlichen Host-Key
+unter einer gemeinsamen Schlüsselbund-Referenz (`Repository.secretRef` und `SFTPAuth.privateKey.secretRef`).
+RSA-PEM mit Passphrase wird durch das System-OpenSSL mit Pipe-Eingabe und Passphrase-Environment ausschließlich
+im RAM entschlüsselt; im Keychain bleibt der normalisierte Schlüssel, die Passphrase wird verworfen.
+Verschlüsselte OpenSSH-Schlüssel und SSH-Passwortanmeldung sind noch nicht freigegeben. Credential-Ersatz
+prüft erst die echte Anmeldung und einen frischen Format-Blob; fehlgeschlagene Proben erhalten das alte Item.
+CLI/Server/Backup/Verify/Wartung/Restore verwenden denselben Pipe-/Gate-/Shutdown-Pfad wie WebDAV.
+SFTP-Endpunkt-Duplikate werden unabhängig von Host-Key-/Schlüsselreferenzen abgewiesen. XPC-Version 7.
 
 ### 6.3 Typisierte CLI-Kommandos (`KopiaCommand`)
 
@@ -555,10 +573,10 @@ parallel laufen (Limit konfigurierbar, Standard 1 global → vorhersehbar, Akku-
 
 Speicherziel-Metadaten werden bei Initialisierung, Decoding und Encoding validiert. WebDAV-/S3-Endpunkte
 enthalten keine URL-Zugangsdaten, Query oder Fragmente; HTTP/HTTPS bleiben für konfigurierte Ziele zulässig.
-SFTP speichert ausschließlich Schlüsselbund-Referenzen für Passwort bzw. privaten Schlüssel und optionale Passphrase,
-sowie einen bestätigten SHA256-Host-Key-Fingerprint im OpenSSH-Format. Das Modell selbst bestätigt keinen Host-Key
-und implementiert noch keinen Secret-Transport. WebDAV-/S3-Backend-Zugangsdaten und deren Zuordnung zu
-Schlüsselbund-Referenzen werden mit der späteren Engine-Anbindung ergänzt; `Repository.secretRef` bezeichnet das Backup-Passwort.
+SFTP speichert in der Konfiguration ausschließlich Schlüsselbund-Referenzen für privaten Schlüssel bzw.
+vorbereitete Passwort-Authentifizierung sowie den bestätigten SHA256-Host-Key-Fingerprint. Der integrierte
+Schlüsselpfad verwendet das gemeinsame Keychain-Envelope aus §6.2; S3/WebDAV speichern ebenfalls ihre
+begrenzten Zugangsdaten-Envelopes unter `Repository.secretRef`. Metadaten allein autorisieren keinen Zugriff.
 Ein Dateisystem-Ziel ohne gebundene Volume-Identität ist lediglich vorbereitete Konfiguration und darf nicht geöffnet werden.
 
 **Policy-Übersetzung (`PolicyTranslator`)**: Retention, Excludes und Compression werden **pro Quelle** als Kopia-Policy
@@ -1142,7 +1160,7 @@ die Health-Abfrage selbst startet weiterhin keine Prozesse oder Secret-/Zugriffs
 2. **Keine Secrets** in: UserDefaults, config.json, Logs, Crash-Reports, argv, Diagnose-Export, XPC-Events. Die UI sendet ein
    Secret genau einmal per XPC an den Agent (beim Setzen) und bekommt es nie zurück. Ausnahme: „Passwort anzeigen“ im
    Wiederherstellungs-Kit, nur nach lokaler Authentifizierung (`LAContext`, `.deviceOwnerAuthentication`).
-   WebDAV-Laufzeit-JSON ausschließlich im Speicher über die anonyme Pipe aus §6.2 ist erlaubt; keine Persistenz.
+   WebDAV-/SFTP-Laufzeit-JSON ausschließlich im Speicher über die anonyme Pipe aus §6.2 ist erlaubt; keine Persistenz.
 3. **Passwort-UX**: Zwei Felder (Eingabe + Bestätigung) beim Anlegen, `.textContentType(.newPassword)` (macOS schlägt starke
    Passwörter vor), Einfügen aus Enpass per ⌘V, Stärkeanzeige (zxcvbn-ähnliche Heuristik, Minimum: 12 Zeichen oder Stärke ≥ 3),
    „Passwort generieren“ (Diceware/random, 24+ Zeichen). Beim Verbinden `.textContentType(.password)`.
@@ -1166,8 +1184,9 @@ die Health-Abfrage selbst startet weiterhin keine Prozesse oder Secret-/Zugriffs
    `x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles` und zeigt eine Schritt-für-Schritt-Grafik.
    **Systemnachweis (integrierter Dienst / Release)**: verifizieren, welchem Prozess TCC den Zugriff des Kindprozesses `kopia` zuordnet (verantwortlicher Prozess =
    Agent bzw. dessen Container-App?), und den Onboarding-Text exakt darauf abstimmen.
-9. **SFTP**: Host-Key beim ersten Verbinden anzeigen (Fingerprint), vom Nutzer bestätigen lassen, in einer eigenen `known_hosts`
-   pro Repo speichern (`--known-hosts=<datei>`). Keine stillschweigende Akzeptanz.
+9. **SFTP**: Öffentlichen Host-Key aus vertrauenswürdigem Kanal übernehmen, Fingerprint anzeigen und vom Nutzer bestätigen lassen.
+   Eigene atomare 0600-`known_hosts` pro Speicherziel; beim Create `--known-hosts`, danach `knownHostsFile` im RAM-JSON.
+   Jede Operation bindet den Eintrag an den gespeicherten Fingerprint; ein Wechsel blockiert ohne stillschweigende Akzeptanz.
 10. **S3**: Optional Object Lock/Retention-Mode beim Anlegen (Schutz gegen Ransomware). Credentials mit minimalen Rechten empfehlen (Hilfetext).
 11. **Updates**: Sparkle 2 mit EdDSA-Signatur, Appcast nur über HTTPS, `SUVerifyUpdateBeforeExtraction`.
     Updates werden nicht installiert, solange ein Backup läuft.
@@ -1524,14 +1543,14 @@ Byte-/Datumsformatierung ausschließlich mit `ByteCountFormatStyle`, `Date.Forma
 
 ## 12. App ↔ Agent-Protokoll
 
-**Verdrahteter Phase-1/2/3/S3-Vertrag (Version 5):** `AgentServiceClient/Server` transportieren begrenzte
+**Verdrahteter Phase-1/2/3/Remote-Vertrag (Version 7):** `AgentServiceClient/Server` transportieren begrenzte
 JSON-Daten in einem Codable-XPC-Umschlag. Vor der Domain-Dekodierung gelten 1 MiB für Requests und
 16 MiB für Antworten. Version/UUID korrelieren jede Antwort; Secrets sind ausschließlich in Setup- und Credential-Aktualisierungsrequests zulässig.
 Jede authentifizierte Sitzung nimmt genau einen Request an und sendet die asynchrone Antwort über
 dieselbe Sitzung. Die öffentlichen Produktionskonstruktoren erzwingen weiterhin Code-Hash-Pinning;
 der anonyme Testendpoint existiert ausschließlich im Testtarget.
 
-Implementiert: Zustand, lokales und S3-Erzeugen/Verbinden, geprüfter S3-Credential-Ersatz, neuer Plan am vorhandenen Ziel, validiertes Plan-Update,
+Implementiert: Zustand, lokales/S3/WebDAV/SFTP-Erzeugen/Verbinden, geprüfter Remote-Credential-Ersatz, bewusste SFTP-Host-Key-Freigabe, neuer Plan am vorhandenen Ziel, validiertes Plan-Update,
 explizite Konfigurations-Recovery, manueller Start/Stopp, Plan-/globale Pause mit absoluter Frist,
 Fortsetzen, explizites Verify, Mitteilungseinstellung und Automatik-Neustart; außerdem Snapshot-Katalog/Browser,
 begrenzte Suche, Beschreibung/Nutzer-Pin, Restore-Admission/Abbruch und Quick-Look-Cache-Lifecycle.
@@ -1697,8 +1716,9 @@ ein integrierter Restore-UI-Durchgang, Package/Xcode/Format am Ende.
 **Ergebnis:** S3, WebDAV und SFTP funktionieren vom Assistenten bis Backup und Restore.
 
 S3 ist über denselben Dienst/Runtime-Pfad integriert; temporärer Lifecycle und offene Live-Nachweise in STATUS.md.
-WebDAV ist über den freigegebenen Pipe-Transport in denselben Dienst-/Runtime-Pfad integriert und automatisiert geprüft;
-Nächster Backend-Block danach: SFTP.
+WebDAV und SFTP sind über den freigegebenen Pipe-Transport in denselben Dienst-/Runtime-Pfad integriert und automatisiert geprüft.
+SFTP umfasst Schlüssel-Anmeldung, bewusste Host-Key-Freigabe und RSA-PEM-Passphrase; SSH-Passwortanmeldung und
+verschlüsselte OpenSSH-Schlüssel bleiben bis zu eigenen Verträgen gesperrt. Nächster integrierter Block: Phase 5.
 
 Pro Backend ein vollständiger größerer Arbeitsblock: Keychain/Transport, Erzeugen/Verbinden/Testen,
 Auth-/Host-Key-UX, Runtime, Offline-/Fehlerbehandlung, Wiederverbindung und Restore.
@@ -1894,6 +1914,9 @@ Neuere ausdrücklich ersetzende Entscheidungen haben Vorrang; alte Phasen-/Platt
 | 2026-10-25 | Phase 4/S3: secretfreier Create-only-Bootstrap, Keychain-Envelope und XPC Version 5 | §6.2/§8/§9: eigene atomare Connection ohne AWS-Felder; Credentials nur an Kind-Environment, frischer Format-Blob statt Cache als Auth-Evidenz, geprüfter Credential-Ersatz. Bestehende Runtime/Restore/Verify/Wartung gemeinsam; HTTPS und ausschließlich lokales 127.0.0.1-HTTP-Fixture. Object Lock und reale Provider-Abnahme separat. |
 
 | 2026-10-25 | Phase 4/WebDAV: Keychain-Envelope und frische native Pipe bis Backup/Restore, XPC Version 6 | §6.2/§8/§9: Create-only ohne Connection, Connect ohne Konfigurationsmutation; explizite Cache-Kapazitäten, Balanced/zstd, Owner-Erhalt, frischer Format-Read für Zugang/Credential-Ersatz. HTTPS; HTTP nur literales 127.0.0.1 zum temporären Test. Keine neuen Abhängigkeiten/Entitlements; reale Anbieter-/UI-/Keychain-Abnahme separat. |
+
+| 2026-10-26 | SFTP-Pipe-Ausnahme ausdrücklich durch Nutzer freigegeben | Dieselben Schutzregeln wie WebDAV: Credentials/entschlüsselter Schlüssel ausschließlich im RAM, frische anonyme Pipe pro Prozess, geschütztes Laufzeitverzeichnis, gemeinsame nicht geheime Wartungssperre und Cleanup; keine reguläre Secret-Datei oder Config-Mutation. Host-Key-Freigabe bleibt separat erforderlich. |
+| 2026-10-26 | SFTP-Schlüsselpfad integriert: vertrauenswürdig übernommener öffentlicher Host-Key mit Fingerprint/Freigabe, atomare bekannte Host-Identität, Keychain-Envelope und RAM-/Pipe-Lifecycle | Präzisiert die freigegebene Pipe-Ausnahme: Create-only erhält Schlüssel-Pipe, Connect/Runtime schreiben keine Connection. RSA-PEM-Passphrase nur an System-OpenSSL im Environment, Schlüssel nur über Pipe; normalisierter Schlüssel im gemeinsamen Keychain-Item, Passphrase verworfen. Kein SSH-Passwort oder verschlüsseltes OpenSSH ohne Nachweis. XPC 7, gemeinsame Gates, fremde Owner bleiben erhalten. |
 
 ---
 

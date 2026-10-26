@@ -2368,6 +2368,146 @@
           }
         }
       }
+    },
+    "SFTP": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SFTP"
+          }
+        }
+      }
+    },
+    "SFTP-Server": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SFTP server"
+          }
+        }
+      }
+    },
+    "Port": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Port"
+          }
+        }
+      }
+    },
+    "SFTP-Benutzername": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SFTP username"
+          }
+        }
+      }
+    },
+    "SFTP-Ordner": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SFTP folder"
+          }
+        }
+      }
+    },
+    "Öffentlicher Host-Key": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Public host key"
+          }
+        }
+      }
+    },
+    "Host-Key-Fingerprint": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Host key fingerprint"
+          }
+        }
+      }
+    },
+    "Host-Key geprüft und freigeben": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "I checked and approve this host key"
+          }
+        }
+      }
+    },
+    "Privater SSH-Schlüssel": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Private SSH key"
+          }
+        }
+      }
+    },
+    "Privaten SSH-Schlüssel einfügen": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Paste private SSH key"
+          }
+        }
+      }
+    },
+    "Schlüssel-Passphrase (optional)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Key passphrase (optional)"
+          }
+        }
+      }
+    },
+    "Übernimm den öffentlichen Host-Key vom Serverbetreiber über einen vertrauenswürdigen Weg (Typ und Base64-Schlüssel, ohne Kommentar). Vergleiche den Fingerprint vor der Freigabe.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Obtain the public host key from your server administrator through a trusted channel (type and Base64 key, without a comment). Compare the fingerprint before approving it."
+          }
+        }
+      }
+    },
+    "Füge einen privaten SSH-Schlüssel ein. Passphrase-geschützte RSA-PEM-Schlüssel werden nur im Arbeitsspeicher entschlüsselt; verschlüsselte OpenSSH-Schlüssel und SSH-Passwortanmeldung werden noch nicht unterstützt. Der Schlüssel wird ausschließlich im Schlüsselbund gespeichert.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Paste a private SSH key. Passphrase-protected RSA PEM keys are decrypted only in memory; encrypted OpenSSH keys and SSH password authentication are not yet supported. The key is stored only in Keychain."
+          }
+        }
+      }
+    },
+    "2. Öffne das vorhandene SFTP-Ziel mit Kopia 0.23.1 über eine nur im Speicher erzeugte Laufzeitkonfiguration und eine neue geerbte anonyme Pipe je Aufruf (--config-file), wie in docs/SPIKE-D-SECRETS.md beschrieben. Erstelle eine eigene known_hosts-Datei mit dem bestätigten öffentlichen Host-Key und prüfe den Fingerprint oben. Server, Port, Benutzer und Ordner stehen oben. Privaten SSH-Schlüssel und Backup-Passwort benötigst du separat; speichere sie niemals in einer regulären Konfigurationsdatei. Halte stdin für den Server-Shutdown frei.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "2. Open the existing SFTP destination with Kopia 0.23.1 using an in-memory runtime configuration and a fresh inherited anonymous pipe for each invocation (--config-file), as described in docs/SPIKE-D-SECRETS.md. Create a dedicated known_hosts file with the approved public host key and check the fingerprint above. Server, port, username and folder are listed above. You need the private SSH key and backup password separately; never store them in a regular configuration file. Keep stdin available for server shutdown."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

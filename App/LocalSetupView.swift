@@ -28,9 +28,12 @@ struct LocalSetupView: View {
                                 Text("Lokales Dateisystem").tag(LocalSetupStore.Backend.filesystem)
                                 Text("S3-kompatibel").tag(LocalSetupStore.Backend.s3)
                                 Text("WebDAV").tag(LocalSetupStore.Backend.webDAV)
+                                Text("SFTP").tag(LocalSetupStore.Backend.sftp)
                             }
                         }
-                        if store.backend == .webDAV {
+                        if store.backend == .sftp {
+                            SFTPSetupFields()
+                        } else if store.backend == .webDAV {
                             TextField("WebDAV-URL", text: $store.webDAVURL).disabled(store.credentialRepository != nil)
                             SecureField("WebDAV-Benutzername", text: $store.webDAVUsername)
                             SecureField("WebDAV-Passwort", text: $store.webDAVPassword)
@@ -128,5 +131,11 @@ struct LocalSetupView: View {
 #Preview("WebDAV") {
     let store = LocalSetupStore(connection: AgentConnection(preview: true))
     store.backend = .webDAV
+    return LocalSetupView().environment(store)
+}
+
+#Preview("SFTP") {
+    let store = LocalSetupStore(connection: AgentConnection(preview: true))
+    store.backend = .sftp
     return LocalSetupView().environment(store)
 }

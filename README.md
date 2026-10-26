@@ -144,6 +144,30 @@ A disposable file-backed WebDAV control run is also tested and immediately clean
 probes, not production integration; destination creation, reconnect/configuration changes and SFTP remain open.
 See [`docs/SPIKE-D-SECRETS.md`](docs/SPIKE-D-SECRETS.md).
 
+The SFTP input probe needs only system Python and OpenSSL:
+
+```bash
+/usr/bin/python3 -B Scripts/spike-kopia-sftp-input.py --output /tmp/mackopia-sftp-input
+/usr/bin/python3 -B -m unittest discover -s Scripts/tests -p test_sftp_input.py
+```
+
+It generates and decrypts PEM private keys in memory and passes SFTP configuration through fresh
+protected pipes. A reserved, non-listening loopback port proves parsing before dial. Incorrect PEM
+passphrases are rejected; encrypted OpenSSH keys remain unverified.
+
+For actual SSH authentication, host-key mismatch rejection, create-only, backup, verify, restore and
+server restart, use a TLS 1.3 interpreter:
+
+```bash
+"$MACKOPIA_TEST_PYTHON" -B Scripts/spike-kopia-sftp-auth.py --output /tmp/mackopia-sftp-auth
+/usr/bin/python3 -B -m unittest discover -s Scripts/tests -p 'test_sftp_*.py'
+```
+
+The loopback-only OpenSSH fixture uses a disposable `ssh-agent` to hold private keys in memory.
+It changes neither the system SSH service nor user SSH configuration. Only public keys and nonsecret
+configuration are written; temporary processes are terminated and reaped. Production SFTP integration
+and user confirmation of host-key trust remain open. See [Spike D](docs/SPIKE-D-SECRETS.md).
+
 
 The WebDAV lifecycle probe creates a fresh destination with `--create-only`, explicitly initializes retention
 and the maintenance owner, verifies quick maintenance, and reconnects after a forced server exit:
@@ -171,3 +195,19 @@ when the fetched binary is available; CI sets `MACKOPIA_REQUIRE_KOPIA_INTEGRATIO
 The long-lived server, Keychain adapter, domain mapping and App/Agent workflow are now integrated;
 installed service/Keychain permissions and provider-specific behavior still need live acceptance.
 See the current implementation atlas and status for the authoritative integration state.
+
+### SFTP destinations
+
+The setup assistant supports SFTP key authentication, including passphrase-protected RSA PEM keys.
+Obtain the server's public host key from its administrator through a trusted channel, paste its type and
+Base64 key without a comment, compare the displayed SHA256 fingerprint, and explicitly approve it.
+Paste the private key in the expandable multiline field; it is stored only in the agent's Keychain envelope.
+The agent decrypts RSA PEM keys only in memory using system OpenSSL and discards the passphrase after
+normalization. Encrypted OpenSSH keys and SSH password authentication remain unsupported.
+
+Create uses Kopia's create-only mode with a fresh inherited key pipe; connect, backup, verification,
+maintenance and restore use fresh runtime configuration pipes. No credential-bearing connection file
+is written. A changed host key blocks access, and rejected credential replacements preserve the existing item.
+`SFTPServiceIntegrationTests` runs the complete service lifecycle against a disposable loopback sshd,
+including PEM decryption, rejected passphrases/keys/host keys, duplicate creation, reconnect/restore,
+foreign maintenance ownership, offline access and a scan for secrets in generated files.
