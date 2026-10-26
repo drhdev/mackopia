@@ -7,13 +7,14 @@ Historische Evidenz bleibt im [Archiv](history/README.md).
 
 **Phase 4: S3, WebDAV und SFTP vom Assistenten bis Backup/Restore integriert.**
 SFTP-Schlüssel-Anmeldung mit bewusster Host-Key-Freigabe und RSA-PEM-Passphrase ist angeschlossen.
-Aktueller Branch `codex/p4-sftp`, [Draft-PR #6](https://github.com/drhdevorg/mackopia/pull/6), gepusht.
-Basis `codex/p4-webdav` ([Draft-PR #5](https://github.com/drhdevorg/mackopia/pull/5)); Review/Merge ausstehend.
+Aktueller Branch `main`: S3-/WebDAV-/SFTP-Stand auf ausdrücklichen Nutzerauftrag per Fast-forward übernommen.
+Reviewhistorie: [SFTP-PR #6](https://github.com/drhdevorg/mackopia/pull/6),
+[WebDAV-PR #5](https://github.com/drhdevorg/mackopia/pull/5).
 Keine echte Remote-Infrastruktur angelegt; nur lokale Wegwerf-Fixtures und temporäre Speicherziele verwendet.
 
 ## In progress
 
-Keine aktive Implementierungsclaim; SFTP-Block abgeschlossen, Review ausstehend.
+Keine aktive Implementierungsclaim; Phase-4-Stand auf `main`, nächster Block ist Phase 5.
 
 ## Verbindliche Entscheidungen
 
