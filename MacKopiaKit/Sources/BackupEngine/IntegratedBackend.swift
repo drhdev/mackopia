@@ -7,7 +7,7 @@ extension RepositoryKind {
         case .filesystem: "filesystem";
         case .s3: "s3";
         case .webdav: "webdav";
-        default: nil
+        case .sftp: "sftp"
         }
     }
 }

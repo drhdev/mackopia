@@ -11,6 +11,7 @@ enum RecoveryKit {
         let path: String
         let s3: Bool
         var webDAV = false
+        var sftp = false
         var s3Configuration: String?
         switch repository.kind {
         case .filesystem(let value, _): path = value; s3 = false
@@ -38,10 +39,11 @@ enum RecoveryKit {
             else { return }
             s3Configuration = text
         case .webdav(let url): path = url.absoluteString; s3 = false; webDAV = true
-        default: return
+        case .sftp(let host, let port, let user, let folder, let fingerprint, _):
+            path = "\(user)@\(host):\(port) · \(folder) · \(fingerprint)"; s3 = false; sftp = true
         }
         let content = RecoveryKitPage(
-            name: repository.name, path: path, s3: s3, webDAV: webDAV, s3Configuration: s3Configuration,
+            name: repository.name, path: path, s3: s3, webDAV: webDAV, sftp: sftp, s3Configuration: s3Configuration,
             identity: repository.identity, date: .now)
         let view = NSHostingView(rootView: content)
         view.frame = NSRect(x: 0, y: 0, width: 560, height: 720)
@@ -59,6 +61,7 @@ private struct RecoveryKitPage: View {
     let path: String
     var s3 = false
     var webDAV = false
+    var sftp = false
     var s3Configuration: String?
     let identity: SnapshotIdentity
     let date: Date
@@ -69,9 +72,11 @@ private struct RecoveryKitPage: View {
             LabeledContent("Speicherziel", value: name)
             LabeledContent(
                 "Typ",
-                value: webDAV
-                    ? String(localized: "WebDAV")
-                    : (s3 ? String(localized: "S3-kompatibel") : String(localized: "Lokales Dateisystem")))
+                value: sftp
+                    ? String(localized: "SFTP")
+                    : webDAV
+                        ? String(localized: "WebDAV")
+                        : (s3 ? String(localized: "S3-kompatibel") : String(localized: "Lokales Dateisystem")))
             Text(path).textSelection(.enabled)
             LabeledContent("Benutzer", value: identity.overrideUser)
             LabeledContent("Rechner", value: identity.overrideHost)
@@ -83,7 +88,11 @@ private struct RecoveryKitPage: View {
             Text(
                 "1. Installiere Kopia 0.23.1 von kopia.io und schließe das Speicherziel an. Verwende eine eigene Konfigurationsdatei, einen eigenen Cache und Logordner."
             )
-            if webDAV {
+            if sftp {
+                Text(
+                    "2. Öffne das vorhandene SFTP-Ziel mit Kopia 0.23.1 über eine nur im Speicher erzeugte Laufzeitkonfiguration und eine neue geerbte anonyme Pipe je Aufruf (--config-file), wie in docs/SPIKE-D-SECRETS.md beschrieben. Erstelle eine eigene known_hosts-Datei mit dem bestätigten öffentlichen Host-Key und prüfe den Fingerprint oben. Server, Port, Benutzer und Ordner stehen oben. Privaten SSH-Schlüssel und Backup-Passwort benötigst du separat; speichere sie niemals in einer regulären Konfigurationsdatei. Halte stdin für den Server-Shutdown frei."
+                )
+            } else if webDAV {
                 Text(
                     "2. Öffne das vorhandene WebDAV-Ziel mit Kopia 0.23.1 über eine nur im Speicher erzeugte Laufzeitkonfiguration. URL steht oben; WebDAV-Benutzername, WebDAV-Passwort und Backup-Passwort benötigst du separat. Verwende HTTPS. repository connect speichert WebDAV-Zugangsdaten in einer Datei und gehört nicht zu diesem sicheren Wiederherstellungsweg."
                 )

@@ -11,7 +11,7 @@ struct RemoteRepositoryAccess: RepositoryAccessChecking {
     let secrets: any SecretStore
     func checkAccess(to repository: Repository) async throws -> PreflightAccessStatus {
         switch repository.kind {
-        case .s3, .webdav: break
+        case .s3, .webdav, .sftp: break
         default: return .unknown
         }
         let credentials = try await RepositoryCredentials.read(

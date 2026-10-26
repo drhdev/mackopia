@@ -21,8 +21,8 @@ Alte Phasen-/Batch-Nummern in Kommentaren und Protokollen sind historische Refer
 
 | Bereich | Implementiert / relevante Einstiegsstellen | Noch zu verbinden |
 |---|---|---|
-| Domain | BackupDomain: validierte Quellen/Ziele/Pläne, UUID-Identität, Policies, Lauf-/Prüfergebnisse | Version-6-Requests tragen validierte Domain-Auswahl einschließlich Volume-UUID |
-| CLI | KopiaCLI: isolierte Prozesse, Whitelist-Umgebung, Timeout/Cancel/Reaping, begrenzte Pipes, Bootstrap/Binding, Verify, Restore-Stichprobe, Wartung lesen/ausführen | Dateisystem, S3 und WebDAV im Dienst verdrahtet; SFTP folgt |
+| Domain | BackupDomain: validierte Quellen/Ziele/Pläne, UUID-Identität, Policies, Lauf-/Prüfergebnisse | Version-7-Requests tragen validierte Domain-Auswahl einschließlich Volume-UUID |
+| CLI | KopiaCLI: isolierte Prozesse, Whitelist-Umgebung, Timeout/Cancel/Reaping, begrenzte Pipes, Bootstrap/Binding, Verify, Restore-Stichprobe, Wartung lesen/ausführen | Dateisystem, S3, WebDAV und SFTP im Dienst verdrahtet |
 | Server | KopiaServer: loopback TLS, Zertifikatspin, Auth/CSRF, REST, Shutdown/Abbruch | KopiaRestoreServing/ServerRestore: Manifest-/Namensrestore, Task-Zähler/Abbruch und Nutzer-Pin/Beschreibung verdrahtet |
 | Konfiguration | Persistence/ConfigStore: atomare Konfiguration, Live-Reload-Grundlage | Dienstbesitz, validierte Mutationen und explizite Recovery über XPC verdrahtet |
 | Historie | Persistence/HistoryStore + VerificationHistory: dauerhafte Läufe und artgetrennte Prüfnachweise | Läufe/Verify/Test-Restore plus append-only MaintenanceHistory; artgetrennte Evidenz über XPC/UI |
@@ -32,7 +32,7 @@ Alte Phasen-/Batch-Nummern in Kommentaren und Protokollen sind historische Refer
 | Automatik | AutomaticBackupRuntime/Controls/State, Scheduler, Monitore, Retry/Pausen/Recovery/Historienabgleich | Als alleiniger Queue-/Engine-Besitzer verdrahtet; Pausen/Termine/Recovery und Live-Neustart über XPC/UI |
 | Vertrauen | Health, Plausibilität/Pinning, SnapshotVerificationEngine, AutomaticSnapshotVerification, AutomaticTestRestore | PlanRuntimeState/PlanRuntimeView zeigen Health/Folgeaktionen und dauerhafte Prüfnachweise; AgentNotifications |
 | Wartung | MaintenanceCoordinator, FilesystemMaintenanceInspection, KopiaMaintenanceReader/Runner | Frische Owner-/Terminprüfung, automatische serielle Nacharbeit und dauerhafte Ziel-Evidenz verdrahtet |
-| XPC | AgentSigningIdentity, AgentServiceClient/Server, AgentWirePacket/Request, AgentServiceRegistration; Version 6, Grenzen/Korrelation, asynchrone Antworten, Revisionsbeobachtung/Reconnect | Echter registrierter positiver/negativer Peer-Test; weitere Requests in Folgephasen |
+| XPC | AgentSigningIdentity, AgentServiceClient/Server, AgentWirePacket/Request, AgentServiceRegistration; Version 7, Grenzen/Korrelation, asynchrone Antworten, Revisionsbeobachtung/Reconnect | Echter registrierter positiver/negativer Peer-Test; weitere Requests in Folgephasen |
 | UI | App/AgentConnection, LocalSetupStore/View, PlanEditorStore/View, FoundationView/Settings, PreviewData; Agent/AgentRuntimeStore und echte Menüleiste; DE/EN | RestoreStore/View/Sheet, SnapshotMetadataSheet, RestorePreviewData und RecoveryKit DE/EN verdrahtet; Live-Design-/A11y-/Druckabnahme offen |
 | Restore | LocalServiceRestore/Utilities, RestoreBrowser/Destination, RestoreState/SearchMatch | Gemeinsame Gate-/Runtime-Steuerung, Ziel-/Ausgabe-UUIDs, Snapshot-Abstammung, Abbruch/Fortschritt und Vorschau-Cleanup; kein Originalquellenzugriff |
 | System | UUID-Monitore, DiskArbitration-Schutz, Network/Energie/Wake, SleepAssertion | Live-Berechtigungsnachweise und gebündelte UI-/A11y-/Performance-Abnahme |
@@ -40,7 +40,7 @@ Alte Phasen-/Batch-Nummern in Kommentaren und Protokollen sind historische Refer
 ## WebDAV-Pfad
 
 - `WebDAVSetup`: begrenztes reflektionsgeschütztes One-way-Envelope; `LocalServiceWebDAVSetup` besitzt
-  Create/Connect und vor Speicherung authentifizierten Credential-Ersatz. XPC 6, Agent-Dispatch und Assistent DE/EN.
+  Create/Connect und vor Speicherung authentifizierten Credential-Ersatz. XPC 7, Agent-Dispatch und Assistent DE/EN.
 - `KopiaWebDAVSetup`: Create-only über Environment, danach vollständige Konfiguration ausschließlich im Speicher;
   Connect nutzt Status/Format-Blob und Owner-Auswertung. Keine reguläre Connection und keine Config-Mutation.
 - `RepositoryCredentials` liest Keychain frisch; CLI-Reader/Verify/Test-Restore/Wartung und `KopiaBackupSession`
@@ -52,8 +52,19 @@ Alte Phasen-/Batch-Nummern in Kommentaren und Protokollen sind historische Refer
 
 ## Sicherheitsverträge, die beim Verbinden erhalten bleiben müssen
 
+- SFTP: `SFTPSetup` ist ein begrenztes, reflektionsgeschütztes Envelope mit bestätigtem öffentlichem Host-Key.
+  `KopiaSFTPTrust` schreibt ihn atomar und prüft bei jeder Operation die private 0600-Datei gegen das Envelope.
+  `KopiaSFTPSetup` nutzt Schlüssel-Pipe bei Create-only, RAM-Konfiguration bei Connect und Runtime;
+  System-OpenSSL entschlüsselt RSA-PEM via Pipe/Passphrase-Environment. Keychain speichert nur den normalisierten Schlüssel.
+  `LocalServiceSFTPSetup` verbindet Gate/Schutz, Probe vor Credential-Ersatz und endpunktbasierten Duplikatschutz.
+  `RepositoryCredentials`/`RemoteRepositoryAccess` verbinden sämtliche bestehenden CLI-/TLS-/Restore-Adapter.
+  XPC 7, Agent-Dispatch, Assistent mit Fingerprint/Freigabe, Credential-Sheet, Recovery-Kit und DE/EN/Previews.
+  `SFTPServiceIntegrationTests` prüft Create/Backup/Verify/Restore/Neustart/Connect, fremden Owner, falsche
+  Passphrase/Schlüssel/Host-Key, Offline, Credential-Erhalt und Secret-Negativscan; `SFTPContractTests` Grenzen/Trust/XPC.
+  SSH-Passwortanmeldung und verschlüsselte OpenSSH-Schlüssel bleiben bis zu eigenen Verträgen gesperrt.
+
 - Nur Agent führt Kopia aus; immer isolierte Config/Logs/Cache, nie Nutzer-Default-Konfiguration.
-- Secrets nur Keychain/Prozess-Environment; WebDAV-Runtime-JSON ausschließlich in anonymer Pipe gemäß PROJEKT.md §6.2.
+- Secrets nur Keychain/Prozess-Environment; WebDAV-/SFTP-Runtime-JSON ausschließlich in anonymer Pipe gemäß PROJEKT.md §6.2.
 - XPC pinnt exakte Signing-ID und CodeDirectory-Hash aus validiertem App-/Agent-Bundle.
 - Eigener laufender Code muss zum geprüften Disk-Siegel passen. Kein Team-ID-Zwang und kein ungeprüfter Transport.
 - Gemeinsame Repo-Reservierung bis zum vollständigen Cancel-/Prozess-/Server-Cleanup halten.
@@ -64,7 +75,7 @@ Alte Phasen-/Batch-Nummern in Kommentaren und Protokollen sind historische Refer
 
 ## Restore-/Recovery-Pfad
 
-- AgentProtocol Version 6 trägt Snapshot-ID/Namenskomponenten; der Client kann keine rohen Kopia-Objekt-IDs wählen.
+- AgentProtocol Version 7 trägt Snapshot-ID/Namenskomponenten; der Client kann keine rohen Kopia-Objekt-IDs wählen.
 - LocalServiceRestore reserviert Automatiksteuerung/Gate bis Server-Shutdown/Reaping; liest frische Konfiguration,
   prüft Binary/isoliertes Binding/Keychain und schützt Speicherziel plus Ausgabevolume. Keine Originalquelle nötig.
 - RestoreBrowser löst jede Auswahl aus frischen Manifesten/Verzeichnissen auf und übernimmt gespeicherte Namensbytes.
@@ -87,7 +98,7 @@ Alte Phasen-/Batch-Nummern in Kommentaren und Protokollen sind historische Refer
   typisierte AWS-Environment-Werte an die bewährten CLI-/TLS-Prozesse weiter. Gemeinsame Runtime/Gates bleiben.
 - `RemoteRepositoryAccess`/`KopiaRepositoryProbe`: Passwort/Status plus frischer Format-Blob-Read; lokaler Cache
   zählt nicht als Auth-Nachweis. Quelle/Volume/FDA gelten beim Backup, beim Restore nur die Ausgabe-Volumes.
-- XPC 6: Setup und Credential-Aktualisierung; Ersatz vor Keychain-Write prüfen, bei Fehlschlag altes Item behalten.
+- XPC 7: Setup und Credential-Aktualisierung; Ersatz vor Keychain-Write prüfen, bei Fehlschlag altes Item behalten.
   Assistent/Quelle, Destination-Liste, Credential-Sheet und Recovery-Kit sind DE/EN angebunden.
 - `S3ServiceIntegrationTests`: temporäres SigV4-/Chunk-signaturprüfendes Loopback-S3, Create/Backup/Verify,
   Test-Restore, Neustart, fehlende Originalquelle, Vollrestore, Connect, falscher Schlüssel/Token/Passwort,
@@ -95,30 +106,15 @@ Alte Phasen-/Batch-Nummern in Kommentaren und Protokollen sind historische Refer
 
 ## Repräsentative Tests und Werkzeuge
 
-- MacKopiaKit/Tests/FoundationTests/ManualBackupIntegrationTests.swift: echtes Temp-Ziel, zwei Quellen,
-  Historie, Backup/Restore/Abbruch; VerifyIntegrationCheck ergänzt Prüfungen und echte fällige Full-Wartung.
-- Automatic*Tests und DailyRuntimeTests: virtuelle Zeit/Ereignisse, Recovery, serielle Prüf-/Wartungsnacharbeit,
-  Abbruch und Queue-Sperren. DailyServiceTests: Dienst-Neustart, persistente Pausen/Optionen/Fehler und Monitor-Recovery.
-- BackupNotificationPolicyTests: Tageslimit, Uhr-Rückstellung, einmaliger erster Erfolg, stille Bedingungswartezeit.
-  MaintenanceHistoryTests: Reopen, getrennte Ziel-Evidenz und kein Überschreiben über doppelte IDs.
-- VolumeEjectionSafetyTests: tatsächlicher Volume-Mountpoint statt Ziel-Unterordner; falsche UUID und nicht abnehmbare Volumes werden vor nativen Schreibaktionen abgewiesen.
-- AgentSigningIdentityTests.swift: echte temporäre Ad-hoc-Bundles, Manipulation/gleichnamiger fremder Code,
-  Layout und laufender Eigenvergleich; keine permanente Dienstregistrierung.
-- Tests/BundleLayoutTests.swift: gebautes Produkt, App-/Agent-/Kopia-Signaturen, Runtime und Plattformmetadaten.
-- KopiaContractTests + Fixtures/kopia-0.23.1: bereinigte echte Kopia-Verträge.
-- Scripts/tests: Download-Isolation, Architekturprüfung und Probe-Sicherheit; lange Scripts/spike-* nur bei Bedarf.
-- LocalServiceIntegrationTests: echter temporärer Service-Lifecycle einschließlich Create/Connect, zusätzlichem
-  Plan/Editor, manuellem und automatisch terminierten Run, 10-Prozent-Verify, Test-Restore, explizitem Verify,
-  bytegleichem Restore, Reopen und Secret-Negativscan. LocalBackupServiceTests prüfen
-  Safe Mode/Recovery, stale Volume-Auswahl und Cancellation; LocalServiceTransportTests echten nativen XPC-Peer.
-- SchedulerTests.delayedTimerTaskRetainsTheOriginalMonotonicDeadline: Task-Start verzögert die Deadline nicht.
-- RestoreServiceIntegrationTests: fremder Benutzer/Rechner, entfernte Originalquelle, Browser/Suche,
-  SHA-256-Restore samt leerer Datei/Symlink/POSIX/mtime, bestehendes Ziel abgewiesen, Preview-Cache gelöscht,
-  Abbruch und erneute Admission, Beschreibung/Pin/Unpin ohne Verlust von Sicherheits-Pins, Secret-Negativscan.
-- RestoreBrowserTests/RestoreSelectionTests: Ancestry/Traversal/UUID/Symlink, Unicode-Namensbytes und
-  Mehrdeutigkeit, begrenzte zyklische Suche/Cancellation und private eindeutige Ausgabeverzeichnisse.
-- Config/kopia-version.json bleibt auf 0.23.1 gepinnt. Historischer amd64-Hash ist keine Supportzusage;
-  der aktuelle Fetch-/Embed-Pfad verwendet ausschließlich arm64, ohne lipo-Universal-Erzeugung.
+- `LocalServiceIntegrationTests`/`ManualBackupIntegrationTests`: echter lokaler Backup-/Verify-/Restore-/Abbruchpfad.
+- `DailyRuntimeTests`/`DailyServiceTests`/`Automatic*Tests`: virtuelle Termine, Wiederanlauf, Serialisierung und Nacharbeit.
+- `RestoreServiceIntegrationTests`: fremde Identitäten, entfernte Originalquelle, Hash-/Metadaten-Restore, Vorschau-Cleanup.
+- S3/WebDAV/SFTP-`ServiceIntegrationTests`: echte temporäre Backends, Dienst/Restore, Zugangsschutz und Secret-Negativscan.
+- `AgentSigningIdentityTests`/`LocalServiceTransportTests`: exakte Bundle-Vertrauensanker, Manipulation und native XPC-Peers.
+- `Tests/BundleLayoutTests.swift`: gebautes Produkt, Signaturen, Hardened Runtime und Plattformmetadaten.
+- `KopiaContractTests` + Fixtures/kopia-0.23.1; Pin unverändert, nur arm64 im Fetch-/Embed-Pfad.
+- `Scripts/tests`: Download-/Probe-Sicherheit; SFTP-SSH-Fixture mit isoliertem Agent-Socket und privaten Schlüsseln im RAM.
+- Vollständiger früherer Testatlas: [Stand vor SFTP](history/IMPLEMENTIERUNG-vor-SFTP-2026-10-26.md).
 
 ## Bekannte technische Grenzen
 
@@ -140,7 +136,7 @@ Alte Phasen-/Batch-Nummern in Kommentaren und Protokollen sind historische Refer
 - Kopia 0.23.1: Server-Checkpoints derzeit 45 statt gewünschter 15 Minuten; nicht durch Architekturumbau kaschieren.
 - Restore-Metadatenlimits: xattrs/ACL/Finder-Tags/Ressourcen-Fork im getesteten Standardworkflow unvollständig;
   Details in Metadaten-Fixtures und historischem Plan-/Statusarchiv.
-- S3 und WebDAV sind im Dienst/Assistenten einschließlich Restore integriert; SFTP-Produktionsintegration offen.
+- S3, WebDAV und SFTP sind im Dienst/Assistenten einschließlich Restore integriert; reale Provider-Abnahme offen.
 - S3: HTTPS, HTTP nur für literales 127.0.0.1 im lokalen Fixture; Object-Lock-Einrichtung noch nicht freigegeben.
   Kein Nachweis eines realen Providers, produktiver IAM-Policies oder echten Keychain-Credential-Wechsels.
 - Systemfreigaben/Installation/Updates auf echten Macs müssen am fertigen Pfad nachgewiesen werden.

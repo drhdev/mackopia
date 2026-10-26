@@ -39,7 +39,7 @@ Breaking one of these is a bug, even if tests pass.
    read-only import flow.
 4. **Secrets only in the Keychain.** Never put passwords, keys or tokens in argv, `UserDefaults`, JSON config, logs, XPC events,
    crash reports, test fixtures or commit history. Pass them to child processes via environment variables.
-   WebDAV exception (approved 2026-10-23): the Agent may encode a runtime JSON configuration only in memory
+   WebDAV/SFTP exception (WebDAV approved 2026-10-23, SFTP approved 2026-10-26): the Agent may encode a runtime JSON configuration only in memory
    and pass it through an explicitly inherited anonymous pipe. Never write it to a regular config/temp file.
    Use a fresh pipe per process, a protected runtime symlink directory and a shared nonsecret maintenance lock;
    clean up descriptors/directories and prohibit Kopia config read/modify/write commands on this transport.

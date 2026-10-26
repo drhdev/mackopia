@@ -217,3 +217,76 @@ HTTP bleibt auf literales 127.0.0.1 im lokalen Fixture begrenzt.
 Der aktuelle Prüfstand von `WebDAVContractTests` und `WebDAVServiceIntegrationTests` sowie offene
 Provider-/Keychain-/UI-Nachweise stehen in [STATUS.md](STATUS.md). Frühere Hinweise auf fehlende native
 Server-/Dienstanbindung oben beschreiben den historischen Spike-Stand.
+
+### SFTP-Eingabevertrag (2026-10-26)
+
+Reproduzierbar ohne neue Abhängigkeiten mit:
+
+```bash
+/usr/bin/python3 -B Scripts/spike-kopia-sftp-input.py --output /tmp/mackopia-sftp-input
+/usr/bin/python3 -B -m unittest discover -s Scripts/tests -p test_sftp_input.py
+```
+
+Gegen das gepinnte native Kopia 0.23.1 erfolgreich ausgeführt. System-OpenSSL erzeugt den privaten
+RSA-Testschlüssel nur auf stdout im RAM; die verschlüsselte Variante erhält die Passphrase ausschließlich
+über Environment und den Schlüssel über stdin. Beide Varianten bleiben aus regulären Dateien fern.
+Die Konfiguration verwendet den vorhandenen geschützten Pipe-/Wartungssperren-Spike.
+Der Test reserviert einen nicht lauschenden Loopback-Port; er prüft ausdrücklich nur die Schritte vor Dial.
+
+| Eingabe | Nachgewiesener Ablauf |
+|---|---|
+| Passwort in Speicher-JSON | Konfiguration gelesen, SSH-Konfiguration aufgebaut, Dial erreicht |
+| Unverschlüsselter PEM-Schlüssel als `keyData` | Schlüssel geparst, Dial erreicht |
+| Verschlüsselter PEM-Schlüssel | Vor Dial als passphrasegeschützt abgelehnt |
+| Im RAM entschlüsseltes PEM / falsche Passphrase | Entschlüsseltes PEM erreicht Dial; falsche Passphrase bei Entschlüsselung abgelehnt |
+| Ungültiges Schlüsselmaterial | Vor Dial als ungültig abgelehnt |
+| Fehlende explizite `knownHostsFile` | Vor Dial abgelehnt; kein Rückgriff auf Nutzerdatei |
+
+Scan aller verbleibenden Testdateien und stdout/stderr jedes SFTP-Aufrufs findet weder Passwort noch
+Passphrase noch vollständiges oder charakteristisches PEM-Material. Der Ergebnisbericht enthält nur
+Version und Wahrheitswerte. Sieben Unit-Tests prüfen Diagnose-Sanitizing, Secret-Ablehnung und OpenSSL-Zuführung einschließlich Entschlüsselung und sanitisiertem Fehlerpfad.
+Ergebnis: `/tmp/mackopia-sftp-input/sftp-input-report.json` (temporär, kein dauerhafter Archivpfad).
+
+Quellcodevertrag: [SFTP-Optionen](https://github.com/kopia/kopia/blob/v0.23.1/repo/blob/sftp/sftp_options.go),
+[Signer/SSH-Aufbau](https://github.com/kopia/kopia/blob/v0.23.1/repo/blob/sftp/sftp_storage.go).
+Kopia ruft `ssh.ParsePrivateKey` ohne Passphrase auf; direkte Unterstützung verschlüsselter Schlüssel ist
+damit nicht belegt. Eine spätere Entschlüsselung darf weder Secret-Dateien noch Secret-argv einführen.
+
+**Noch nicht nachgewiesen:** SSH-Anmeldung, Host-Key-Bestätigung/-Wechsel, Create-only mit SFTP,
+Backup/Restore, Reconnect, verschlüsselte OpenSSH-Schlüssel, Keychain und produktive Swift-Anbindung.
+Der leere eigene known-hosts-Testbestand ist keine Host-Key-Freigabe und erreicht keine SSH-Aushandlung.
+
+**Freigabe erteilt (2026-10-26):** Der Nutzer hat die Erweiterung der WebDAV-Pipe-Ausnahme
+auf SFTP ausdrücklich bestätigt. AGENTS.md §2.4, PROJEKT.md §6.2/§8 und §17 sind angepasst.
+Host-Key-Vertrauen muss weiterhin bewusst bestätigt werden.
+
+### SFTP-Authentifizierung und Lifecycle (2026-10-26)
+
+`Scripts/spike-kopia-sftp-auth.py` verwendet `sftp_probe_fixture.py` und ausschließlich vorhandene
+Systemwerkzeuge. Ein eigener `ssh-agent -D` hält den zufälligen Hostschlüssel und Testschlüssel im RAM;
+`ssh-add -` erhält private Schlüssel über stdin. Auf Dateisystem liegen nur öffentliche Schlüssel,
+explizite known-hosts und die nicht geheime sshd-Konfiguration. Eigener Socket, temporärer HOME,
+Loopback-Listener, deaktivierte Passwort-/PAM-/Forwarding-/TTY-/RC-Pfade, erzwungenes internal-sftp;
+keine Änderung an Systemdienst oder Nutzer-SSH-Konfiguration. Prozesse werden im finally beendet/reaped.
+
+```bash
+# TLS-1.3-fähigen Interpreter wie im README wählen:
+"$MACKOPIA_TEST_PYTHON" -B Scripts/spike-kopia-sftp-auth.py --output /tmp/mackopia-sftp-auth
+/usr/bin/python3 -B -m unittest discover -s Scripts/tests -p 'test_sftp_*.py'
+```
+
+Gegen natives Kopia 0.23.1 nachgewiesen: Anmeldung mit privatem PEM, falscher Schlüssel abgelehnt,
+abweichender gültiger Hostschlüssel abgelehnt, Create-only und Duplikat ohne Formatänderung,
+Policy/Owner initialisiert, Backup, 100-Prozent-Verify, bytegleicher Restore über gepinnten TLS-Server,
+frische Pipe nach Server-Neustart und erneuter Restore, beide Server sauber per EOF beendet.
+Create-only liest `--keyfile=/dev/fd/N` über eine explizit vererbte anonyme Pipe; spätere Prozesse
+verwenden das bestehende geschützte Runtime-JSON-Verfahren. Keine reguläre Connection erzeugt.
+Secret-Negativscan über verbleibende Dateien und CLI-Ausgaben sauber; Report enthält nur Version/Booleans.
+Vier zusätzliche Unit-Tests prüfen Bootstrap-argv/FD-Vererbung, Diagnose und Cleanup-Eskalation.
+
+Nachweis: `/tmp/mackopia-sftp-auth/sftp-auth-report.json`; TLS-1.3-Python aus vorhandenem Codex-Runtime.
+Der erste Serverlauf mit System-Python scheiterte an dessen fehlendem TLS-1.3-Support; der korrigierte
+Lifecycle bestand. CLI-Parsing/PEM-Entschlüsselung bleiben mit System-Python ausführbar.
+**Offen:** Passwort-SSH-Authentifizierung, verschlüsselte OpenSSH-Schlüssel, produktive Swift-/Keychain-/XPC-/UI-Anbindung,
+bewusste Host-Key-Erstfreigabe, Reconnect/Offline im Dienst und echtes SFTP-System. Der Fixture-Hostkey ist
+vorab testintern bekannt; dies ersetzt keine Nutzerbestätigung im Produkt.

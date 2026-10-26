@@ -87,7 +87,13 @@ struct KopiaChildProcess: Sendable {
             else { throw KopiaProcessError.launchFailed }
         }
         var arguments = [request.executable.path] + request.arguments
-        if let configuration { arguments.append("--config-file=" + configuration.configurationURL.path) }
+        if let configuration {
+            switch request.pipeUse {
+            case .configuration: arguments.append("--config-file=" + configuration.configurationURL.path)
+            case .sftpKey: arguments.append("--keyfile=" + configuration.configurationURL.path)
+            case .opensslInput: arguments += ["-in", configuration.configurationURL.path]
+            }
+        }
         let argumentPointers = arguments.map { strdup($0) }
         let environmentPointers = request.environment.sorted { $0.key < $1.key }.map { strdup($0.key + "=" + $0.value) }
         defer {

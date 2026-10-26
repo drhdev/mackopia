@@ -11,6 +11,8 @@ struct KopiaProcessRequest: Sendable, CustomReflectable {
     var outputLimit: Int = 4 * 1024 * 1024
     var webDAVConfiguration: Data?
     var repositoryDirectory: URL?
+    enum PipeUse: Sendable { case configuration, sftpKey, opensslInput }
+    var pipeUse: PipeUse = .configuration
 
     var customMirror: Mirror { Mirror(self, children: ["request": "<private>"]) }
 }

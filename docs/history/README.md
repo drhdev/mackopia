@@ -10,3 +10,6 @@ Archivierte Aufgaben und Prüfstände sind keine aktuellen Freigaben.
 - [Phase-1-Einstieg, 2026-10-25](STATUS-Phase1-Einstieg-2026-10-25.md): Ausgangslage vor dem vollständigen lokalen Dienstpfad.
 - [Status vor der integrierten Phasenplanung](STATUS-2026-10-25.md): historische Einzelblöcke und Nachweise.
 - [Abgelöster Umsetzungsplan](PLAN-bis-2026-10-25.md): alte Phase-/Batch-Abfolge; aktueller Plan in PROJEKT.md §14.
+
+- [SFTP-Spike/Einstieg, 2026-10-26](STATUS-Phase4-SFTP-Spike-2026-10-26.md): freigegebener Pipe-Transport, SSH-Lifecycle und WebDAV-Prüfbasis vor der SFTP-Produktionsanbindung.
+- [Implementierungsatlas vor SFTP, 2026-10-26](IMPLEMENTIERUNG-vor-SFTP-2026-10-26.md): ausführlicher Testatlas und WebDAV-Baseline.

@@ -13,8 +13,25 @@ final class LocalSetupStore {
     var password = ""
     var confirmation = ""
     var create = true
-    enum Backend: Hashable { case filesystem, s3, webDAV }
+    enum Backend: Hashable { case filesystem, s3, webDAV, sftp }
     var backend: Backend = .filesystem
+    var sftpHost = ""
+    var sftpPort = "22"
+    var sftpUsername = ""
+    var sftpPath = ""
+    var sftpHostKey = ""
+    var sftpConfirmedKey = ""
+    var sftpPrivateKey = ""
+    var sftpPassphrase = ""
+    var sftpKeyRef = SecretRef()
+    var sftpFingerprint: String { SFTPSetup.fingerprint(hostKey: sftpHostKey) ?? "" }
+    var sftpSetup: SFTPSetup? {
+        guard let port = Int(sftpPort) else { return nil }
+        return try? SFTPSetup(
+            host: sftpHost, port: port, username: sftpUsername, path: sftpPath,
+            hostKey: sftpHostKey, hostKeyConfirmed: !sftpFingerprint.isEmpty && sftpConfirmedKey == sftpHostKey,
+            privateKey: sftpPrivateKey, passphrase: sftpPassphrase, backupPassword: password, keyRef: sftpKeyRef)
+    }
     var webDAVURL = "https://"
     var webDAVUsername = ""
     var webDAVPassword = ""
@@ -27,6 +44,7 @@ final class LocalSetupStore {
         case .filesystem: !destination.isEmpty
         case .s3: s3Setup != nil
         case .webDAV: webDAVSetup != nil
+        case .sftp: sftpSetup != nil
         }
     }
     var endpoint = "https://s3.amazonaws.com"
@@ -58,6 +76,14 @@ final class LocalSetupStore {
             self.name = repository.name; self.webDAVURL = url.absoluteString
             self.backend = .webDAV; self.create = false
         }
+        if let repository = credentialRepository,
+            case .sftp(let host, let port, let user, let path, _, let auth) = repository.kind,
+            case .privateKey(let ref, _) = auth
+        {
+            self.name = repository.name; self.sftpHost = host; self.sftpPort = String(port)
+            self.sftpUsername = user; self.sftpPath = path; self.sftpKeyRef = ref
+            self.backend = .sftp; self.create = false
+        }
     }
     var valid: Bool {
         if credentialRepository != nil { return destinationValid }
@@ -74,11 +100,18 @@ final class LocalSetupStore {
         password = UUID().uuidString + UUID().uuidString; confirmation = password; revealPassword = true
     }
     func clear() {
+        sftpPrivateKey = ""; sftpPassphrase = ""; sftpConfirmedKey = "";
         webDAVPassword = ""; webDAVUsername = ""; password = ""; confirmation = ""; revealPassword = false;
         accessKey = ""; secretKey = ""; sessionToken = ""
     }
     func submit(completed: @escaping () -> Void) {
         guard valid else { return }
+        if let repository = credentialRepository, backend == .sftp, let setup = sftpSetup {
+            connection.send(.updateSFTPCredentials(repositoryID: repository.id, setup: setup)) {
+                self.clear(); completed()
+            }
+            return
+        }
         if let repository = credentialRepository, backend == .webDAV, let setup = webDAVSetup {
             connection.send(.updateWebDAVCredentials(repositoryID: repository.id, setup: setup)) {
                 self.clear(); completed()
@@ -94,6 +127,16 @@ final class LocalSetupStore {
         guard let source = sourceSelection else { return }
         if let repositoryID {
             connection.send(.createPlan(name: name, repositoryID: repositoryID, source: source), completed: completed)
+            return
+        }
+        if backend == .sftp, let setup = sftpSetup {
+            connection.send(.setupSFTP(name: name, source: source, setup: setup, create: create)) {
+                self.connection.recoveryKitRepositoryID =
+                    self.connection.state?.configuration?.repositories.first {
+                        $0.kind == setup.kind
+                    }?.id
+                self.clear(); completed()
+            }
             return
         }
         if backend == .webDAV, let setup = webDAVSetup {
